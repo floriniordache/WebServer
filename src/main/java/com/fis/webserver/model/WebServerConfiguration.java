@@ -9,9 +9,27 @@ package com.fis.webserver.model;
 
 public class WebServerConfiguration {
 	private int portNumber;
-
-	public WebServerConfiguration(int portNumber) {
+	private int minWorkers;
+	private int maxWorkers;
+	private int clientsPerWorker;
+	
+	public WebServerConfiguration(int portNumber, int minWorkers, int maxWorkers, int clientsPerWorker) {
 		this.portNumber = portNumber;
+		this.minWorkers = minWorkers;
+		this.maxWorkers = maxWorkers;
+		this.clientsPerWorker = clientsPerWorker;
+	}
+	
+	public int getMinWorkers() {
+		return minWorkers;
+	}
+
+	public int getMaxWorkers() {
+		return maxWorkers;
+	}
+
+	public int getClientsPerWorker() {
+		return clientsPerWorker;
 	}
 	
 	public int getPortNumber() {

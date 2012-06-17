@@ -6,6 +6,8 @@ import java.nio.channels.SocketChannel;
 
 import org.apache.log4j.Logger;
 
+import com.fis.webserver.model.WebServerConfiguration;
+
 /**
  * Abstract connection listener class based on Java NIO framework
  * classes
@@ -29,8 +31,9 @@ public abstract class ConnectionListener extends Thread {
 	//flag indicating if the connection listener is initialized and listening for connections
 	private boolean initialized;
 	
-	public ConnectionListener( int portNo ) {
-		this.port = portNo;
+	public ConnectionListener( WebServerConfiguration serverConfig ) {
+		this.port = serverConfig.getPortNumber();
+		
 		this.initialized = false;
 	}
 	

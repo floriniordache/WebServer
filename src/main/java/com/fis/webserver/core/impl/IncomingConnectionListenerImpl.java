@@ -5,6 +5,7 @@ import java.nio.channels.SocketChannel;
 import org.apache.log4j.Logger;
 
 import com.fis.webserver.core.ConnectionListener;
+import com.fis.webserver.model.WebServerConfiguration;
 import com.fis.webserver.pool.WorkerManager;
 
 /**
@@ -21,14 +22,20 @@ import com.fis.webserver.pool.WorkerManager;
 
 public class IncomingConnectionListenerImpl extends ConnectionListener {
 
-	public IncomingConnectionListenerImpl(int portNo) {
-		super(portNo);
+	// worker manager used to distribute new clients to the worker pool
+	private WorkerManager manager;
+	
+	public IncomingConnectionListenerImpl(WebServerConfiguration serverConfig) {
+		super(serverConfig);
+		
+		//create worker manager
+		manager = new WorkerManager(serverConfig);
 	}
 
 	public static final Logger logger = Logger.getLogger(IncomingConnectionListenerImpl.class);
 
 	@Override
 	public void acceptConnection(SocketChannel channel) {
-	    WorkerManager.INSTANCE.handleNewClient(channel);
+		manager.handleNewClient(channel);
 	}
 }

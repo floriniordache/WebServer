@@ -35,7 +35,7 @@ public class FISServer implements Server {
 		}
 		
 		//start the incoming listener thread
-		IncomingConnectionListenerImpl connectionListener = new IncomingConnectionListenerImpl(serverConfig.getPortNumber());
+		IncomingConnectionListenerImpl connectionListener = new IncomingConnectionListenerImpl(serverConfig);
 		new Thread(connectionListener).run();
 	}
 	

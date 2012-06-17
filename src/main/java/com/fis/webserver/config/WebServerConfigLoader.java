@@ -20,6 +20,15 @@ public class WebServerConfigLoader extends ConfigLoader {
 	//listen port property
 	public static final String LISTEN_PORT_PROPERTY = "listen.port";
 	
+	//minimum number of workers property
+	public static final String WORKERS_MIN_PROPERTY = "server.workers.min"; 
+
+	//maximum number of workers property
+	public static final String WORKERS_MAX_PROPERTY = "server.workers.max";
+	
+	//clients per worker property
+	public static final String MAX_CLIENTS_PER_WORKER_PROPERTY = "server.workers.clients.max";
+	
 	public WebServerConfigLoader() {
 		super(WEB_SERVER_CONFIG_FILE);
 	}
@@ -35,11 +44,15 @@ public class WebServerConfigLoader extends ConfigLoader {
 		WebServerConfigLoader serverConfigLoader = new WebServerConfigLoader();
 		
 		Integer listenPort = serverConfigLoader.getIntProperty(LISTEN_PORT_PROPERTY);
+		Integer minWorkers = serverConfigLoader.getIntProperty(WORKERS_MIN_PROPERTY);
+		Integer maxWorkers = serverConfigLoader.getIntProperty(WORKERS_MAX_PROPERTY);
+		Integer maxClients = serverConfigLoader.getIntProperty(MAX_CLIENTS_PER_WORKER_PROPERTY);
 		
 		WebServerConfiguration serverConfig = null;
 		
 		if( listenPort != null ) {
-			 serverConfig = new WebServerConfiguration(listenPort);
+			serverConfig = new WebServerConfiguration(listenPort, minWorkers,
+					maxWorkers, maxClients);
 		}
 		else {
 			logger.error("Error loading " + WEB_SERVER_CONFIG_FILE + "!");

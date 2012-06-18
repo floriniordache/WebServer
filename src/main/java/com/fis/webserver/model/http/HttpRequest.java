@@ -13,8 +13,8 @@ public class HttpRequest {
 	//contains the http method (GET, POST, etc.)
 	private String method;
 	
-	//the URI on which the method must be performed on
-	private String URI;
+	//the URL on which the method must be performed on
+	private String URL;
 	
 	//http major and minor versions
 	private int httpMajorVersion;
@@ -32,8 +32,8 @@ public class HttpRequest {
 		requestBody = new StringBuilder();
 	}
 
-	public String getURI() {
-		return URI;
+	public String getURL() {
+		return URL;
 	}
 
 	public int getHttpMajorVersion() {
@@ -56,8 +56,8 @@ public class HttpRequest {
 		this.method = method;
 	}
 
-	public void setURI(String uRI) {
-		URI = uRI;
+	public void setURL(String URL) {
+		this.URL = URL;
 	}
 
 	public void setHttpMajorVersion(int httpMajorVersion) {

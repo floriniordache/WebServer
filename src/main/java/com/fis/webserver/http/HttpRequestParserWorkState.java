@@ -124,12 +124,12 @@ public class HttpRequestParserWorkState {
 				if( methodMatcher.matches() ) {
 					//parsing success, extract the data
 					String method = methodMatcher.group(1);
-					String URI = methodMatcher.group(2);
+					String URL = methodMatcher.group(2);
 					int majorVersion = Integer.parseInt(methodMatcher.group(3));
 					int minorVersion = Integer.parseInt(methodMatcher.group(4));
 					
 					httpRequest.setMethod(method);
-					httpRequest.setURI(URI);
+					httpRequest.setURL(URL);
 					httpRequest.setHttpMajorVersion(majorVersion);
 					httpRequest.setHttpMinorVersion(minorVersion);
 					

@@ -1,5 +1,6 @@
 package com.fis.webserver.model.http;
 
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -16,7 +17,8 @@ public class HttpResponse {
 	
 	private int statusCode;
 	private HashMap<String, String> responseHeaders;
-	private StringBuilder responseBody;
+	
+	private InputStream contentInputStream;
 	
 	public HttpResponse(int statusCode) {
 		this.statusCode = statusCode;
@@ -25,7 +27,7 @@ public class HttpResponse {
 		responseHeaders.put("Server", SERVER_HEADER_VALUE);
 		responseHeaders.put("Connection", "Close");
 		
-		responseBody = new StringBuilder();
+		contentInputStream = null;
 	}
 	
 	public int getStatusCode() {
@@ -40,11 +42,15 @@ public class HttpResponse {
 		responseHeaders.put(headerName, headerValue);
 	}
 	
-	public StringBuilder getResponseBody() {
-		return responseBody;
+	public InputStream getContentStream() {
+		return contentInputStream;
 	}
 	
-	public StringBuilder getRawResponse() {
+	public void setContentStream(InputStream contentInputStream) {
+		this.contentInputStream = contentInputStream;
+	}
+	
+	public StringBuilder getSerializedHeader() {
 		StringBuilder rawResponse = new StringBuilder(HTTP_VERSION);
 		rawResponse.append(" ");
 		rawResponse.append(statusCode);

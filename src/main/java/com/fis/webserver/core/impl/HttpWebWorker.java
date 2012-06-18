@@ -18,6 +18,7 @@ import java.util.concurrent.BlockingQueue;
 import org.apache.log4j.Logger;
 
 import com.fis.webserver.core.WebWorker;
+import com.fis.webserver.http.IncrementalResponseWriter;
 import com.fis.webserver.model.SocketReadPayload;
 import com.fis.webserver.model.http.HttpResponse;
 
@@ -48,7 +49,10 @@ public class HttpWebWorker implements WebWorker {
 	private BlockingQueue<SocketReadPayload> workQueue;
 	
 	//map with the pending responses that need to be sent back to the clients
-	private HashMap<SelectionKey, HttpResponse> pendingResponses;
+	private HashMap<SelectionKey, IncrementalResponseWriter> pendingResponses;
+	
+	//buffer used to read and write data
+	private ByteBuffer dataBuffer;
 	
 	public HttpWebWorker(int maxClients, BlockingQueue<SocketReadPayload> workQueue) {
 		this.maxClients = maxClients;
@@ -58,7 +62,7 @@ public class HttpWebWorker implements WebWorker {
 		
 		newClientsQueue = new ArrayBlockingQueue<SocketChannel>(10);
 		
-		pendingResponses = new HashMap<SelectionKey, HttpResponse>();
+		pendingResponses = new HashMap<SelectionKey, IncrementalResponseWriter>();
 		
 		try {
 			// Create a new selector
@@ -67,6 +71,9 @@ public class HttpWebWorker implements WebWorker {
 		catch(Exception e) {
 			logger.error("Could not initialize socket selector!", e);
 		}
+		
+		//prepare the byte buffer
+		dataBuffer = ByteBuffer.allocate(16384);
 	}
 	
 	@Override
@@ -150,13 +157,13 @@ public class HttpWebWorker implements WebWorker {
 		//get the associated socket channel
 		SocketChannel socketChannel = (SocketChannel) key.channel();
 		
-		//prepare the byte buffer
-		ByteBuffer readBuffer = ByteBuffer.allocate(16384);
+		//clear the buffer
+		dataBuffer.clear();
 		
 		//attempt to read from the socket
 		int bytesRead = -1;
 		try {
-			bytesRead = socketChannel.read(readBuffer);
+			bytesRead = socketChannel.read(dataBuffer);
 		}
 		catch(IOException e) {
 			//the remote host has closed the connection
@@ -176,8 +183,8 @@ public class HttpWebWorker implements WebWorker {
 		decoder.reset();
 		
 		try {
-			readBuffer.position(0);
-			CharBuffer decodedBuffer = decoder.decode(readBuffer);
+			dataBuffer.flip();
+			CharBuffer decodedBuffer = decoder.decode(dataBuffer);
 			logger.debug("Read from socket: " + decodedBuffer.toString());
 			
 			//push the new data in the work queue
@@ -202,22 +209,41 @@ public class HttpWebWorker implements WebWorker {
 		//write a dummy response and close the channel;
 		SocketChannel socketChannel = (SocketChannel) key.channel();
 		
-		//get the queued response
-		HttpResponse response = pendingResponses.get(key);
-		if( response == null ) {
+		//use the IncrementalResponseWriter to write data to the socket
+		
+		IncrementalResponseWriter responseWriter = pendingResponses.get(key);
+		if( responseWriter == null ) {
 			logger.error("No response available for sending!");
+			
+			//close the channel, we don't have any data
+			closeChannel(key);
 		}
-		
-		ByteBuffer writeBuffer = ByteBuffer.wrap(response.getRawResponse().toString().getBytes());
-		
-		
-		try {
-			socketChannel.write(writeBuffer);
-		} catch (IOException e) {
-			logger.error("Error writing to socket!", e);
+		else {
+			//clear the data buffer
+			dataBuffer.clear();
+			
+			//write a chunk of data to the buffer
+			boolean sendFinished = responseWriter.incrementalWriteResponse(dataBuffer);		
+			
+			//write the data to the socket
+			try {
+				dataBuffer.flip();
+				socketChannel.write(dataBuffer);
+			} catch (IOException e) {
+				logger.error("Error writing to socket!", e);
+			}
+			
+			//check if processing is finished
+			if(sendFinished) {
+				//key.interestOps(SelectionKey.OP_READ);
+				
+				//close the channel
+				closeChannel(key);
+				
+				//remove the helper response writer from the pending send data queue
+				pendingResponses.remove(key);
+			}
 		}
-		
-		closeChannel(key);
 	}
 
 	@Override
@@ -238,12 +264,13 @@ public class HttpWebWorker implements WebWorker {
 	}
 
 	@Override
-	public void sendResponse(SelectionKey key, HttpResponse response) {
+	public void sendResponse(SelectionKey key, HttpResponse response) {		
+		//queue the response
+		//use an IncrementalResponseWriter to help with the serialization process
+		pendingResponses.put(key, new IncrementalResponseWriter(response));
+		
 		//register the socket channel for read operation
 		key.interestOps(SelectionKey.OP_WRITE);
-		
-		//queue the response
-		pendingResponses.put(key, response);
 		
 		socketSelector.wakeup();
 	}

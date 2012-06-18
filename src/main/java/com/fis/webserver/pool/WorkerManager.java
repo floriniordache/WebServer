@@ -10,6 +10,7 @@ import java.util.concurrent.BlockingQueue;
 
 import org.apache.log4j.Logger;
 
+import com.fis.webserver.config.WebServerConfiguration;
 import com.fis.webserver.core.WebWorker;
 import com.fis.webserver.core.impl.HttpWebWorker;
 import com.fis.webserver.http.ResponseBuilder;
@@ -18,7 +19,6 @@ import com.fis.webserver.http.impl.HttpResponseBuilder;
 import com.fis.webserver.model.HttpRequestPayload;
 import com.fis.webserver.model.HttpResponsePayload;
 import com.fis.webserver.model.SocketReadPayload;
-import com.fis.webserver.model.WebServerConfiguration;
 
 /**
  * WebWorker singleton thread pool manager
@@ -47,24 +47,24 @@ public class WorkerManager {
 	// HttpRequest if possible
 	private BlockingQueue<SocketReadPayload> requestParserWorkQueue;
 	
-	public WorkerManager(WebServerConfiguration serverConfig) {
+	public WorkerManager() {
 		
 		//create the work queues
 		requestParserWorkQueue = new ArrayBlockingQueue<SocketReadPayload>(
-				3 * serverConfig.getClientsPerWorker(), true);
+				3 * WebServerConfiguration.INSTANCE.getClientsPerWorker(), true);
 		
 		responderWorkQueue = new ArrayBlockingQueue<HttpRequestPayload>(
-				3 * serverConfig.getClientsPerWorker(), true);
+				3 * WebServerConfiguration.INSTANCE.getClientsPerWorker(), true);
 		
 		workerPool = new ArrayList<WebWorker>();
 		// start the worker threads, based on the minimum workers setting of the
 		// server
-		logger.debug("Spawning " + serverConfig.getMinWorkers() + " worker threads!");
-		for( int workerIdx = 0 ; workerIdx < serverConfig.getMinWorkers() ; workerIdx++ ) {
+		logger.debug("Spawning " + WebServerConfiguration.INSTANCE.getMinWorkers() + " worker threads!");
+		for( int workerIdx = 0 ; workerIdx < WebServerConfiguration.INSTANCE.getMinWorkers() ; workerIdx++ ) {
 			
 			//create new worker that can handle the max number of clients defined by the config
 			WebWorker worker = new HttpWebWorker(
-					serverConfig.getClientsPerWorker(), requestParserWorkQueue);
+					WebServerConfiguration.INSTANCE.getClientsPerWorker(), requestParserWorkQueue);
 			
 			//create and start new thread that will run the worker
 			Thread workerThread = new Thread(worker);
@@ -116,7 +116,7 @@ public class WorkerManager {
 		
 		//try to pass the socket to the lowest loaded worker
 		if( !lowestLoaded.handle( socketChannel ) ) {
-			logger.debug("All existing workers are full, rejecting request!");
+			logger.error("All existing workers are full, rejecting request!");
 			
 			//reject the request for the moment
 			try {

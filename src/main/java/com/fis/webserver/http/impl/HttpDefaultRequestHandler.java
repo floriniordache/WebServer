@@ -18,7 +18,7 @@ public class HttpDefaultRequestHandler implements HttpRequestHandler {
 	@Override
 	public HttpResponse handle(HttpRequest request) {
 		//returning a 501 status message
-		HttpResponse response = new HttpResponse(200);
+		HttpResponse response = new HttpResponse(501);
 		
 		return response;
 	}

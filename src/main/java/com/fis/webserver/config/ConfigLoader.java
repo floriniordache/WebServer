@@ -2,6 +2,7 @@ package com.fis.webserver.config;
 
 import java.net.URL;
 import java.util.Properties;
+import java.util.Set;
 
 import org.apache.log4j.Logger;
 
@@ -81,6 +82,18 @@ public class ConfigLoader {
 		}
 		catch(NumberFormatException nfe) {
 			logger.warn("Could not convert " + propName + " to integer value! ", nfe);
+		}
+		
+		return null;
+	}
+
+	/**
+	 * @return a set containing all the property names in this configuration
+	 *         file
+	 */
+	public Set<String> getPropertyNames() {
+		if( loadedProperties != null ) {
+			return loadedProperties.stringPropertyNames();
 		}
 		
 		return null;

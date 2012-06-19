@@ -11,14 +11,14 @@ import java.nio.channels.SelectionKey;
  */
 
 public class SocketReadPayload extends WorkPayload {
-	private CharBuffer charBuffer;
+	private CharBuffer dataBuffer;
 	
-	public SocketReadPayload(SelectionKey key, CharBuffer charBuffer) {
+	public SocketReadPayload(SelectionKey key, CharBuffer dataBuffer) {
 		super(key);
-		this.charBuffer = charBuffer;
+		this.dataBuffer = dataBuffer;
 	}
 
-	public CharBuffer getCharBuffer() {
-		return charBuffer;
+	public CharBuffer getBuffer() {
+		return dataBuffer;
 	}
 }

@@ -1,8 +1,12 @@
 package com.fis.webserver.model.http;
 
 import java.io.InputStream;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TimeZone;
 
 /**
  * Models the Http Response
@@ -15,16 +19,28 @@ public class HttpResponse {
 	public static final String HTTP_VERSION = "HTTP/1.1";
 	public static final String SERVER_HEADER_VALUE = "FISServer";
 	
+	//date format for the date and last-modified information of the response headers
+	public static final DateFormat df = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");  
+	
 	private int statusCode;
 	private HashMap<String, String> responseHeaders;
 	
 	private InputStream contentInputStream;
 	
+	static {
+		//initialize the timezone of the dateformat object to be GMT
+		df.setTimeZone(TimeZone.getTimeZone("GMT"));
+	}
+	
 	public HttpResponse(int statusCode) {
 		this.statusCode = statusCode;
 		
+		// create the generic headers: Server name, date of the response
+		// generation and connection close(for the moment)
 		responseHeaders = new HashMap<String, String>();
 		responseHeaders.put("Server", SERVER_HEADER_VALUE);
+
+		responseHeaders.put("Date", df.format(new Date()));
 		responseHeaders.put("Connection", "Close");
 		
 		contentInputStream = null;

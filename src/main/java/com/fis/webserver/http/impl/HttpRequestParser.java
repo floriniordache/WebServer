@@ -66,7 +66,7 @@ public class HttpRequestParser implements RequestParser {
 				}
 
 				//send the data for processing
-				boolean parsingFinished = workState.newData(data.getCharBuffer().array());
+				boolean parsingFinished = workState.newData(data.getBuffer());
 				
 				if( parsingFinished ) {
 					//parsing is finished, deliver the data in the exit queue

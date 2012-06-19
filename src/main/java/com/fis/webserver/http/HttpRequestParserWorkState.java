@@ -1,5 +1,6 @@
 package com.fis.webserver.http;
 
+import java.nio.CharBuffer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -74,14 +75,16 @@ public class HttpRequestParserWorkState {
 	 * @return boolean indicating if the request parsing has finished
 	 * @param newData
 	 */
-	public boolean newData(char[] newData) {
-		buf.append(newData);
-		
-		//process the available data
+	public boolean newData(CharBuffer newData) {		
 		try {
+			//decode the data and append it to internal buffer
+			buf.append(newData.toString());
+			
+			//process the available data			
 			parseData();
 		} catch (Exception e) {
 			logger.error("Could not parse request!", e);
+			finished = true;
 		}
 		
 		return finished;

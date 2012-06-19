@@ -32,9 +32,6 @@ import com.fis.webserver.model.http.HttpResponse;
 public class HttpWebWorker implements WebWorker {
 	public static final Logger logger = Logger.getLogger(HttpWebWorker.class);
 	
-	//maximum number of clients this worker can handle
-	private int maxClients;
-	
 	//number of available client slots
 	private int freeClientSlots;
 	
@@ -54,8 +51,13 @@ public class HttpWebWorker implements WebWorker {
 	//buffer used to read and write data
 	private ByteBuffer dataBuffer;
 	
+	//default encoding for the http protocol
+	public static final String defaultEncoding = "ISO-8859-1";
+	
+	//default decoder for incoming messages
+	private CharsetDecoder defaultDecoder;
+	
 	public HttpWebWorker(int maxClients, BlockingQueue<SocketReadPayload> workQueue) {
-		this.maxClients = maxClients;
 		this.freeClientSlots = maxClients;
 		
 		this.workQueue = workQueue;
@@ -74,6 +76,9 @@ public class HttpWebWorker implements WebWorker {
 		
 		//prepare the byte buffer
 		dataBuffer = ByteBuffer.allocate(16384);
+		
+		//init the decoder
+		 defaultDecoder = Charset.forName(defaultEncoding).newDecoder();
 	}
 	
 	@Override
@@ -177,21 +182,16 @@ public class HttpWebWorker implements WebWorker {
 		if( bytesRead < 0 ) {
 			closeChannel(key);
 		}
-		
-		Charset charset = Charset.forName("UTF-8");
-		CharsetDecoder decoder = charset.newDecoder();
-		decoder.reset();
-		
+				
 		try {
 			dataBuffer.flip();
-			CharBuffer decodedBuffer = decoder.decode(dataBuffer);
-			logger.debug("Read from socket: " + decodedBuffer.toString());
+			defaultDecoder.reset();
+			CharBuffer charDataBuffer = defaultDecoder.decode(dataBuffer);
 			
 			//push the new data in the work queue
-			workQueue.put(new SocketReadPayload(key, decodedBuffer));
-		}
-		catch (CharacterCodingException e) {
-			logger.error("Error decoding message read from socket!", e);
+			workQueue.put(new SocketReadPayload(key, charDataBuffer));
+		} catch (CharacterCodingException e) {
+			logger.error("Could not decode data read from stream!", e);
 		}
 		catch (InterruptedException ie) {
 			logger.error("Worker interrupted while pushing newly read data to the work queue!", ie);

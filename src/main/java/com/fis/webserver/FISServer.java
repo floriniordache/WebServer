@@ -3,8 +3,9 @@ package com.fis.webserver;
 import org.apache.log4j.Logger;
 
 import com.fis.webserver.config.WebServerConfiguration;
+import com.fis.webserver.core.ConnectionListener;
+import com.fis.webserver.core.ConnectionListenerFactory;
 import com.fis.webserver.core.Server;
-import com.fis.webserver.core.impl.IncomingConnectionListenerImpl;
 
 /**
  * Web Server's main class
@@ -30,9 +31,11 @@ public class FISServer implements Server {
 			return;
 		}
 		
-		//start the incoming listener thread
-		IncomingConnectionListenerImpl connectionListener = new IncomingConnectionListenerImpl();
-		new Thread(connectionListener).run();
+		//get a connection listener implementation
+		ConnectionListener mainConnectionListener = ConnectionListenerFactory.getConnectionListner();
+		
+		//start the connection listener
+		new Thread(mainConnectionListener).run();
 	}
 	
 	public static void main(String[] args) {

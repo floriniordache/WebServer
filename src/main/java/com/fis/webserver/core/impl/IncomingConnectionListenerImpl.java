@@ -4,7 +4,6 @@ import java.nio.channels.SocketChannel;
 
 import org.apache.log4j.Logger;
 
-import com.fis.webserver.config.WebServerConfiguration;
 import com.fis.webserver.core.ConnectionListener;
 import com.fis.webserver.pool.WorkerManager;
 

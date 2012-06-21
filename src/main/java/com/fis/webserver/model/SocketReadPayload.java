@@ -1,6 +1,5 @@
 package com.fis.webserver.model;
 
-import java.nio.CharBuffer;
 import java.nio.channels.SelectionKey;
 
 /**
@@ -11,14 +10,14 @@ import java.nio.channels.SelectionKey;
  */
 
 public class SocketReadPayload extends WorkPayload {
-	private CharBuffer dataBuffer;
+	private byte[] dataBuffer;
 	
-	public SocketReadPayload(SelectionKey key, CharBuffer dataBuffer) {
+	public SocketReadPayload(SelectionKey key, byte[] dataBuffer) {
 		super(key);
 		this.dataBuffer = dataBuffer;
 	}
 
-	public CharBuffer getBuffer() {
+	public byte[] getBuffer() {
 		return dataBuffer;
 	}
 }

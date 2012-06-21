@@ -2,14 +2,10 @@ package com.fis.webserver.core.impl;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.channels.spi.SelectorProvider;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.Charset;
-import java.nio.charset.CharsetDecoder;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -51,12 +47,6 @@ public class HttpWebWorker implements WebWorker {
 	//buffer used to read and write data
 	private ByteBuffer dataBuffer;
 	
-	//default encoding for the http protocol
-	public static final String defaultEncoding = "ISO-8859-1";
-	
-	//default decoder for incoming messages
-	private CharsetDecoder defaultDecoder;
-	
 	public HttpWebWorker(int maxClients, BlockingQueue<SocketReadPayload> workQueue) {
 		this.freeClientSlots = maxClients;
 		
@@ -75,10 +65,7 @@ public class HttpWebWorker implements WebWorker {
 		}
 		
 		//prepare the byte buffer
-		dataBuffer = ByteBuffer.allocate(16384);
-		
-		//init the decoder
-		 defaultDecoder = Charset.forName(defaultEncoding).newDecoder();
+		dataBuffer = ByteBuffer.allocate(8190);
 	}
 	
 	@Override
@@ -185,13 +172,13 @@ public class HttpWebWorker implements WebWorker {
 				
 		try {
 			dataBuffer.flip();
-			defaultDecoder.reset();
-			CharBuffer charDataBuffer = defaultDecoder.decode(dataBuffer);
+			
+			//copy the buffer to send it to the parsing worker
+			byte[] readData = new byte[dataBuffer.limit()];
+			dataBuffer.get(readData);
 			
 			//push the new data in the work queue
-			workQueue.put(new SocketReadPayload(key, charDataBuffer));
-		} catch (CharacterCodingException e) {
-			logger.error("Could not decode data read from stream!", e);
+			workQueue.put(new SocketReadPayload(key, readData));
 		}
 		catch (InterruptedException ie) {
 			logger.error("Worker interrupted while pushing newly read data to the work queue!", ie);

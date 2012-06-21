@@ -1,5 +1,6 @@
 package com.fis.webserver.model.http;
 
+import java.io.InputStream;
 import java.util.HashMap;
 
 /**
@@ -9,7 +10,7 @@ import java.util.HashMap;
  *
  */
 
-public class HttpRequest {
+public class HttpRequest {	
 	//contains the http method (GET, POST, etc.)
 	private String method;
 	
@@ -23,13 +24,13 @@ public class HttpRequest {
 	//request headers
 	private HashMap<String, String> headers;
 	
-	//request body
-	private StringBuilder requestBody;
+	//input stream of the request entity body(if any)
+	private InputStream entityBodyInputStream;
 	
 	public HttpRequest() {
 		this.headers = new HashMap<String, String>();
 		
-		requestBody = new StringBuilder();
+		entityBodyInputStream = null;
 	}
 
 	public String getURL() {
@@ -68,14 +69,18 @@ public class HttpRequest {
 		this.httpMinorVersion = httpMinorVersion;
 	}
 
-	public void addToRequestBody(StringBuilder requestBodyPart) {
-		this.requestBody.append(requestBodyPart);
+	/**
+	 * Gets an input stream for the entity body
+	 * 
+	 */
+	public InputStream getEntityBody() {
+		return this.entityBodyInputStream;
 	}
 
-	public StringBuilder getRequestBody() {
-		return requestBody;
+	public void setEntityBody(InputStream entityBodyInputStream){
+		this.entityBodyInputStream = entityBodyInputStream;
 	}
-
+	
 	public String getMethod() {
 		return method;
 	}

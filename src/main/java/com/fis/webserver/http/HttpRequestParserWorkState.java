@@ -1,6 +1,9 @@
 package com.fis.webserver.http;
 
-import java.nio.CharBuffer;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -19,16 +22,18 @@ import com.fis.webserver.model.http.HttpRequest;
 public class HttpRequestParserWorkState {
 	public static final Logger logger = Logger.getLogger(HttpRequestParserWorkState.class);
 	
-	public static final Pattern methodPattern = Pattern.compile("(?is)([^ ]+) ([^ ]+) HTTP/([0-9]+)\\.([0-9]+)\r\n?");
-	public static final Pattern headerPattern = Pattern.compile("(?is)([^:]+):\\s([^\r]*)\r\n?");
-	public static final Pattern foldedHeaderPattern = Pattern.compile("(?is)[\\s\\t]{1}([^\r]*)\r\n?");
-	public static final Pattern lineSeparatorPattern = Pattern.compile("(?is)\r\n?");
+	//regular expression used to parse the request line
+	public static final Pattern methodPattern = Pattern.compile("(?is)([^ ]+) ([^ ]+) HTTP/([0-9]+)\\.([0-9]+)");
+	
+	//regular expressions used to parse http headers and folded headers
+	public static final Pattern headerPattern = Pattern.compile("(?is)([^:]+):\\s([^\r]*)");
+	public static final Pattern foldedHeaderPattern = Pattern.compile("(?is)[\\s\\t]{1}([^\r]*)");
 	
 	//possible parsing states
 	
 	//expecting to parse the first line of the request
 	// METHOD URI HTTP/1.0
-	public static final int STATE_METHOD = 0;
+	public static final int STATE_REQUEST_LINE = 0;
 	
 	//parsing the request headers
 	public static final int STATE_HEADERS = 1;
@@ -36,10 +41,20 @@ public class HttpRequestParserWorkState {
 	//parsing the request body
 	public static final int STATE_BODY = 2;
 	
-	private int currentState = STATE_METHOD;
+	private int currentState = STATE_REQUEST_LINE;
 	
 	//contains the data that was not parsed yet
-	private StringBuilder buf;
+	private ByteBuffer buf;
+	
+	//cache for the entityBody
+	private ByteBuffer entityBody;
+	
+	//flag to indicate whether to cache the entity body or not
+	private boolean cachedEntityBody;
+	
+	// output stream where the entity body will be written when its size exceeds
+	// the maximum cached size
+	private OutputStream entityBodyOutputStream;
 	
 	//current http request
 	private HttpRequest httpRequest;
@@ -51,14 +66,27 @@ public class HttpRequestParserWorkState {
 	//flag indicating parsing has finished;
 	private boolean finished;
 	
+	//default encoding for the http header
+	public static final String defaultEncoding = "ISO-8859-1";
+	
+	//header decoder
+	CharsetDecoder decoder =  Charset.forName(defaultEncoding).newDecoder();
+	
 	public  HttpRequestParserWorkState() {
-		buf = new StringBuilder();
+		buf = ByteBuffer.allocate(8190*2);
+		buf.clear();
 		
 		httpRequest = new HttpRequest();
 		
-		currentState = STATE_METHOD;
+		currentState = STATE_REQUEST_LINE;
 		
 		finished = false;
+		
+		cachedEntityBody = true;
+		
+		entityBodyOutputStream = null;
+		
+		entityBody = null;
 	}
 
 	public HttpRequest getHttpRequest() {
@@ -75,13 +103,14 @@ public class HttpRequestParserWorkState {
 	 * @return boolean indicating if the request parsing has finished
 	 * @param newData
 	 */
-	public boolean newData(CharBuffer newData) {		
+	public boolean newData(byte[] newData) {		
 		try {
-			//decode the data and append it to internal buffer
-			buf.append(newData.toString());
-			
+			//append the data to the internal buffer
+			buf.put(newData);
+
 			//process the available data			
 			parseData();
+			buf.compact();
 		} catch (Exception e) {
 			logger.error("Could not parse request!", e);
 			finished = true;
@@ -96,98 +125,115 @@ public class HttpRequestParserWorkState {
 	
 	private void parseData() throws Exception {
 		
-		//copy the data to the request body
+		buf.flip();
+
+		/*
+		 * Header parsing has finished, copy all remainig bytes on the request
+		 * to the request body
+		 */
 		if( currentState == STATE_BODY ) {
 			copyBufferToBody();
 			
 			//no line processing needed
 			return;
 		}
-				
-		//parse the data line by line
-		int lineIdx = buf.indexOf("\r\n");
-		if( lineIdx < 0 ) {
-			//also support \r as line separator
-			lineIdx = buf.indexOf("\r");
-		}
 		
-		while(lineIdx >= 0) {
-			//get the line, with the \r\n terminator
-			lineIdx += 2;
-			String line = buf.substring(0, lineIdx);
-	
-			Matcher methodMatcher = methodPattern.matcher(line);
-			Matcher bodyMatcher = lineSeparatorPattern.matcher(line);
-			Matcher headerMatcher = headerPattern.matcher(line);
-			Matcher foldedHeaderMatcher = foldedHeaderPattern.matcher(line);
+		try {
+			//search for the line terminator
+			int separatorPos = searchLineTerminator();
 			
-			switch (currentState) {
-			case STATE_METHOD:
-				//try to parse the header
-				if( methodMatcher.matches() ) {
-					//parsing success, extract the data
-					String method = methodMatcher.group(1);
-					String URL = methodMatcher.group(2);
-					int majorVersion = Integer.parseInt(methodMatcher.group(3));
-					int minorVersion = Integer.parseInt(methodMatcher.group(4));
-					
-					httpRequest.setMethod(method);
-					httpRequest.setURL(URL);
-					httpRequest.setHttpMajorVersion(majorVersion);
-					httpRequest.setHttpMinorVersion(minorVersion);
-					
-					currentState = STATE_HEADERS;
-				}
-				else {
-					//not a valid request
-					throw new Exception("Not a valid http request");
-				}
-				break;
-			case STATE_HEADERS:
-				//determine if we have the body separator
-				if( bodyMatcher.matches() ) {
-					//found body separator
-					currentState = STATE_BODY;
-					
-					//save the previous header
-					saveParsedHeader();
-					
-					finished = true;
-				}
-				else if(headerMatcher.matches()) {
-					//save the previous parsed header, if available
-					saveParsedHeader();
+			while(separatorPos >= 0) {
+				/*
+				 * Found a line separator Decode the byte sequence using the
+				 * static decoder
+				 * Depending of the current state of the parser,
+				 * try to extract Request method, headers or entity-body
+				 */
 				
-					//found header
-					parsedHeaderName = headerMatcher.group(1);
-					parsedHeaderValue = new StringBuilder(headerMatcher.group(2));
-				}
-				else if( foldedHeaderMatcher.matches() ) {
-					//found folded header
-					if( parsedHeaderValue != null ) {
-						parsedHeaderValue.append(foldedHeaderMatcher.group(1));
+				//copy the line
+				byte[] line = new byte[separatorPos - buf.position()];
+				buf.get(line);
+				
+				//decode the line
+				String lineStr = decoder.decode(ByteBuffer.wrap(line)).toString();
+				
+				//process the line
+				Matcher methodMatcher = methodPattern.matcher(lineStr);
+				Matcher headerMatcher = headerPattern.matcher(lineStr);
+				Matcher foldedHeaderMatcher = foldedHeaderPattern.matcher(lineStr);
+				
+				switch (currentState) {
+				case STATE_REQUEST_LINE:
+					//try to parse the header
+					if( methodMatcher.matches() ) {
+						//parsing success, extract the data
+						String method = methodMatcher.group(1);
+						String URL = methodMatcher.group(2);
+						int majorVersion = Integer.parseInt(methodMatcher.group(3));
+						int minorVersion = Integer.parseInt(methodMatcher.group(4));
+						
+						httpRequest.setMethod(method);
+						httpRequest.setURL(URL);
+						httpRequest.setHttpMajorVersion(majorVersion);
+						httpRequest.setHttpMinorVersion(minorVersion);
+						
+						currentState = STATE_HEADERS;
 					}
 					else {
+						//not a valid request
 						throw new Exception("Not a valid http request");
 					}
+					break;
+				case STATE_HEADERS:
+					//determine if we have the body separator
+					if( "".equals(lineStr) ) {
+						//found body separator
+						currentState = STATE_BODY;
+						
+						//save the previous header
+						saveParsedHeader();
+						
+						finished = true;
+					}
+					else if(headerMatcher.matches()) {
+						//save the previous parsed header, if available
+						saveParsedHeader();
+					
+						//found header
+						parsedHeaderName = headerMatcher.group(1);
+						parsedHeaderValue = new StringBuilder(headerMatcher.group(2));
+					}
+					else if( foldedHeaderMatcher.matches() ) {
+						//found folded header
+						if( parsedHeaderValue != null ) {
+							parsedHeaderValue.append(foldedHeaderMatcher.group(1));
+						}
+						else {
+							throw new Exception("Not a valid http request");
+						}
+					}
+					break;
+				default:
+					break;
 				}
-				break;
-			default:
-				break;
+				
+				//"eat" the two CR LF bytes
+				buf.get();
+				buf.get();
+				
+				// copy the remainder to the request body if we have reached the
+				// entity-body state
+				if( currentState == STATE_BODY ) {
+					copyBufferToBody();
+					break;
+				}
+				else {
+					separatorPos = searchLineTerminator();	
+				}
 			}
-			
-			//remove processed data from the buffer
-			buf.delete(0, lineIdx);
-			
-			//copy the remainder to the http body
-			if( currentState == STATE_BODY ) {
-				copyBufferToBody();
-				break;
-			}
-			else {
-				//continue line processing
-				lineIdx = buf.indexOf("\r\n");
-			}
+		}
+		catch(Exception e) {
+			logger.error("Error parsing the http request!", e);
 		}
 	}
 	
@@ -199,8 +245,33 @@ public class HttpRequestParserWorkState {
 		//check if we're parsing the body
 		if( currentState == STATE_BODY ) {
 			//copy all remainig data to the body part
-			httpRequest.addToRequestBody(buf);
-			buf.delete(0, buf.length());
+			
+			//check if the body is to be cached
+			if( cachedEntityBody ) {
+				
+				//we need to cache it, create the buffer
+				if( entityBody == null ) {
+					entityBody = ByteBuffer.allocate(16380);
+				}
+			
+				//check if we have enough space remaining in buffer
+				if( entityBody.remaining() < buf.limit() ) {
+					//not enough space in memory buffer, write to file
+					//TODO write to file
+					
+					//nullify the buffer so the space will be collected
+					entityBody = null;
+					
+					//set the cached flag to false
+					cachedEntityBody = false;
+				}
+				else {
+					entityBody.put(buf);
+				}
+			}
+			else {
+				//TODO write to file
+			}
 		}
 	}
 
@@ -212,5 +283,47 @@ public class HttpRequestParserWorkState {
 		if( parsedHeaderName != null && parsedHeaderValue != null ) {
 			httpRequest.addHeader(parsedHeaderName, parsedHeaderValue.toString());
 		}
+	}
+
+	/**
+	 * TODO Change with a better search algorithm
+	 * search for header line terminator ( CR LF )
+	 * 
+	 * @return position of CR byte or -1 if sequence CR LF was not found in this
+	 *         buffer
+	 */
+	private int searchLineTerminator() {
+		
+		//start with current position of the buffer
+		int currentPos = buf.position();
+		
+		boolean found = false;
+		while(!found) {
+			
+			//terminate if we reached the buffer limit
+			if( currentPos >= buf.limit() ) {
+				break;
+			}
+			
+			/*
+			 * if current byte is CR, also try to match the next byte to LF
+			 * break the loop on success
+			 */
+			if( buf.get(currentPos) == 13 ) {
+				if( currentPos + 1 < buf.limit() && buf.get(currentPos + 1) == 10 ) {
+					found = true;
+					break;
+				}
+			}
+			
+			currentPos ++;
+		}
+		
+		//if found flag is set, return the position where the CR LF was found
+		if(found) {
+			return currentPos;
+		}
+		
+		return -1;
 	}
 }

@@ -3,7 +3,6 @@ package com.fis.webserver.http.impl;
 import com.fis.webserver.http.HttpRequestHandler;
 import com.fis.webserver.model.http.HttpRequest;
 import com.fis.webserver.model.http.HttpResponse;
-import com.fis.webserver.util.cleaner.TempFileCleaner;
 
 /**
  * Request handler for the POST method
@@ -34,9 +33,8 @@ public class HttpPostResponseHandler implements HttpRequestHandler {
 		response.addHeader("Content-Type", "text/html");
 		
 		//passing a resource cleaner to the response object
-		//that will close the entity body input stream and delete any temp file
-		//it will be called after the response is completely sent back to the client
-		response.setCleaner(new TempFileCleaner(request.getEntityBody(), request.getTempFile()));
+		//it will perform any needed operations designated by the request body object
+		response.setCleaner(request.getRequestBody().getCleaner());
 		
 		return response;
 	}

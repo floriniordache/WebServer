@@ -1,10 +1,6 @@
 package com.fis.webserver.util;
 
-import java.io.BufferedInputStream;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.InputStream;
 
 import org.apache.log4j.Logger;
 
@@ -23,14 +19,13 @@ public class URLTranslator {
 	
 	/**
 	 * Attempts to find the resource identified by the received url on the file
-	 * system . If successful the method will try to open the file and return
-	 * the file's InputStream
+	 * system . If successful the method will return a valid File object
 	 * 
 	 * @param url
 	 *            - url of the resource that the method is trying to find
-	 * @return open file handle of the resource on success, null otherwise
+	 * @return File object of the identified file in the server's file system
 	 */
-	public static InputStream mapResource(String url) {
+	public static File mapResource(String url) {
 		String serverDocumentRoot = WebServerConfiguration.INSTANCE.getDocRoot();
 		
 		//map the request to a file system path
@@ -42,15 +37,7 @@ public class URLTranslator {
 		//see if the file exists
 		File resource = new File( fileSystemPath );
 		if( resource.exists() ) {
-			//attempt to open the file
-			try {
-				InputStream inputStream = new BufferedInputStream(new FileInputStream(resource));
-				
-				return inputStream;
-			} catch (FileNotFoundException e) {
-				logger.error("Could not open file with file system path = "
-						+ fileSystemPath);
-			}
+			return resource;
 		}
 		
 		logger.debug("Resource with url=" + url + " does not exist!");

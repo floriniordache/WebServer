@@ -1,7 +1,5 @@
 package com.fis.webserver.model.http;
 
-import java.io.File;
-import java.io.InputStream;
 import java.util.HashMap;
 
 /**
@@ -27,21 +25,15 @@ public class HttpRequest {
 	//request headers
 	private HashMap<String, String> headers;
 	
-	//input stream of the request entity body(if any)
-	private InputStream entityBodyInputStream;
-	
-	// temporary file that will be used for the entity body, if it exceeds the
-	// max cached size
-	private File tempFile;
+	//container for the request body
+	private RequestBody requestBody;
 
 	private long contentLength;
 	
 	public HttpRequest() {
 		this.headers = new HashMap<String, String>();
 		
-		entityBodyInputStream = null;
-		
-		tempFile = null;
+		requestBody = new RequestBody();
 		
 		contentLength = -1;
 	}
@@ -69,6 +61,9 @@ public class HttpRequest {
 		// separate variable
 		if( HTTP_CONTENT_LENGTH_HEADER.equalsIgnoreCase(headerName) ) {
 			contentLength = Long.parseLong(headerValue);
+			
+			//update content length of the request body
+			requestBody.setMaxEntityBodyLength(contentLength);
 		}
 	}
 	
@@ -88,28 +83,12 @@ public class HttpRequest {
 		this.httpMinorVersion = httpMinorVersion;
 	}
 
-	/**
-	 * Gets an input stream for the entity body
-	 * 
-	 */
-	public InputStream getEntityBody() {
-		return this.entityBodyInputStream;
+	public RequestBody getRequestBody() {
+		return this.requestBody;
 	}
-
-	public void setEntityBody(InputStream entityBodyInputStream){
-		this.entityBodyInputStream = entityBodyInputStream;
-	}
-	
+		
 	public String getMethod() {
 		return method;
-	}
-
-	public File getTempFile() {
-		return tempFile;
-	}
-
-	public void setTempFile(File tempFile) {
-		this.tempFile = tempFile;
 	}
 	
 	/**

@@ -63,6 +63,10 @@ public class HttpResponse {
 		responseHeaders.put(headerName, headerValue);
 	}
 	
+	public void addAll(HashMap<String,String> headers) {
+		responseHeaders.putAll(headers);
+	}
+	
 	public InputStream getContentStream() {
 		return contentInputStream;
 	}

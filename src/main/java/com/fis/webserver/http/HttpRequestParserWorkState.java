@@ -1,5 +1,11 @@
 package com.fis.webserver.http;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
@@ -56,6 +62,13 @@ public class HttpRequestParserWorkState {
 	// the maximum cached size
 	private OutputStream entityBodyOutputStream;
 	
+	// temporary storage for the request body if it's larger than the cached size
+	private File tempFile;
+	
+	// keeps track of the current length of the entity body , so we can check if
+	// it is actually longer than the reported content-length header
+	private long entityBodyLength;
+	
 	//current http request
 	private HttpRequest httpRequest;
 	
@@ -70,7 +83,7 @@ public class HttpRequestParserWorkState {
 	public static final String defaultEncoding = "ISO-8859-1";
 	
 	//header decoder
-	CharsetDecoder decoder =  Charset.forName(defaultEncoding).newDecoder();
+	public static final CharsetDecoder decoder =  Charset.forName(defaultEncoding).newDecoder();
 	
 	public  HttpRequestParserWorkState() {
 		buf = ByteBuffer.allocate(8190*2);
@@ -87,6 +100,10 @@ public class HttpRequestParserWorkState {
 		entityBodyOutputStream = null;
 		
 		entityBody = null;
+		
+		tempFile = null;
+		
+		entityBodyLength = 0;
 	}
 
 	public HttpRequest getHttpRequest() {
@@ -114,6 +131,46 @@ public class HttpRequestParserWorkState {
 		} catch (Exception e) {
 			logger.error("Could not parse request!", e);
 			finished = true;
+		}
+		
+		//check if the actual sent entity body is larger than the content-length header
+		if (httpRequest.getContentLength() > 0
+				&& entityBodyLength >= httpRequest.getContentLength()) {
+			//finish reading, prevent DoS
+			finished = true;
+		}
+		
+		//perform cleanup
+		if(finished) {
+			//check if a temp file was used
+			if( tempFile != null ) {
+				//need to close the output stream
+				try {
+					entityBodyOutputStream.close();
+				} catch (Exception e) {
+					logger.warn("Could not properly close the temporary file output stream!", e);
+				}
+				
+				//open the temp file and assign it to http request object
+				InputStream entityBodyInputStream = null;
+				if(tempFile != null) {
+					try {
+						entityBodyInputStream = new FileInputStream(tempFile);
+						
+						httpRequest.setTempFile(tempFile);
+					} catch (FileNotFoundException e) {
+						logger.error("Could not open the temporary file for reading!", e);
+					}
+				}
+				else {
+					byte[] writeBuf = new byte[entityBody.limit()];
+					entityBody.put(writeBuf);
+					
+					entityBodyInputStream = new ByteArrayInputStream(writeBuf);
+				}
+				
+				httpRequest.setEntityBody(entityBodyInputStream);
+			}
 		}
 		
 		return finished;
@@ -193,7 +250,10 @@ public class HttpRequestParserWorkState {
 						//save the previous header
 						saveParsedHeader();
 						
-						finished = true;
+						//if this is a no-content method (GET, HEAD) signal the finish of processing
+						if(httpRequest.getContentLength() <= 0) {
+							finished = true;
+						}
 					}
 					else if(headerMatcher.matches()) {
 						//save the previous parsed header, if available
@@ -244,6 +304,9 @@ public class HttpRequestParserWorkState {
 	private void copyBufferToBody() {
 		//check if we're parsing the body
 		if( currentState == STATE_BODY ) {
+			//increment the size of the entity body read so far
+			entityBodyLength += buf.limit();
+			
 			//copy all remainig data to the body part
 			
 			//check if the body is to be cached
@@ -257,7 +320,14 @@ public class HttpRequestParserWorkState {
 				//check if we have enough space remaining in buffer
 				if( entityBody.remaining() < buf.limit() ) {
 					//not enough space in memory buffer, write to file
-					//TODO write to file
+
+					//create temporary file
+					entityBodyOutputStream = createTempFile();
+					
+					//write to file
+					entityBody.flip();
+					writeToTempFile(entityBody);
+					writeToTempFile(buf);
 					
 					//nullify the buffer so the space will be collected
 					entityBody = null;
@@ -270,7 +340,8 @@ public class HttpRequestParserWorkState {
 				}
 			}
 			else {
-				//TODO write to file
+				//write to temp file
+				writeToTempFile(buf);
 			}
 		}
 	}
@@ -325,5 +396,41 @@ public class HttpRequestParserWorkState {
 		}
 		
 		return -1;
+	}
+	
+	/**
+	 * Creates and opens a temporary file for writing
+	 * 
+	 * @return OutputStream of the temporary file or null in case of an error
+	 */
+	private OutputStream createTempFile() {
+		FileOutputStream tempOS = null;
+		try {
+			tempFile = new File(System.currentTimeMillis()+".tmp");
+			tempOS = new FileOutputStream(tempFile);
+		}
+		catch(Exception e) {
+			logger.error("Could not create temporary file to store request body!", e);
+		}
+		
+		return tempOS;
+	}
+	
+	/**
+	 * Writes the content of buf to the temporary file
+	 * 
+	 * @param buf
+	 */
+	private void writeToTempFile(ByteBuffer buf) {
+		try {
+			byte[] writeBuf = new byte[buf.limit()];
+			buf.get(writeBuf);
+			
+			entityBodyOutputStream.write(writeBuf);
+			entityBodyOutputStream.flush();
+		}
+		catch(Exception e) {
+			logger.error("Could not write request body to temporary file!", e);
+		}
 	}
 }

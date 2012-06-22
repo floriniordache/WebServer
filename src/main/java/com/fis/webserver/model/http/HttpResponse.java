@@ -8,6 +8,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.TimeZone;
 
+import com.fis.webserver.util.cleaner.Cleaner;
+
 /**
  * Models the Http Response
  * 
@@ -26,6 +28,9 @@ public class HttpResponse {
 	private HashMap<String, String> responseHeaders;
 	
 	private InputStream contentInputStream;
+	
+	//will perform the needed cleanup after the response is sent to the client
+	private Cleaner resourceCleaner;
 	
 	static {
 		//initialize the timezone of the dateformat object to be GMT
@@ -66,6 +71,18 @@ public class HttpResponse {
 		this.contentInputStream = contentInputStream;
 	}
 	
+	public void setCleaner(Cleaner resourceCleaner) {
+		this.resourceCleaner = resourceCleaner;
+	}
+	
+	public Cleaner getResourceCleaner() {
+		return resourceCleaner;
+	}
+
+	public void setResourceCleaner(Cleaner resourceCleaner) {
+		this.resourceCleaner = resourceCleaner;
+	}
+
 	public StringBuilder getSerializedHeader() {
 		StringBuilder rawResponse = new StringBuilder(HTTP_VERSION);
 		rawResponse.append(" ");

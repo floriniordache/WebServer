@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
 import org.apache.log4j.Logger;
 
 import com.fis.webserver.model.http.HttpResponse;
+import com.fis.webserver.util.cleaner.Cleaner;
 
 /**
  * Prepares the HttpResponse to be sent back to the client.
@@ -104,6 +105,13 @@ public class IncrementalResponseWriter {
 			remainingBufferCapacity = destination.remaining();
 		}
 		
+		if( processingFinished ) {			
+			//call the response resource cleaner, if it exists
+			Cleaner resourceCleaner = response.getResourceCleaner();
+			if(resourceCleaner != null) {
+				resourceCleaner.cleanUp();
+			}
+		}
 		
 		return processingFinished;
 	}
@@ -140,5 +148,12 @@ public class IncrementalResponseWriter {
 		}
 		
 		return numRead;
+	}
+	
+	/**
+	 * Cleans up the resources associated with this response
+	 */
+	public void cleanup() {
+		
 	}
 }

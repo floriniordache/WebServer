@@ -7,36 +7,29 @@ import com.fis.webserver.model.http.HttpResponse;
 /**
  * Request handler for the POST method
  * 
- * Dynamic content generation is supported via CGI Handler will try to spawn a
- * new process that will run the executable on the server side.
+ * The web server will not support dynamic content generation.
  * 
- * The request body will be piped in the input stream of the process and the
- * output stream that the executable generates will be relayed back to the
- * client
- * 
- * If the request string does not refer to a CGI script, the handler will use
- * the GET method to handle the request
+ * The only difference from the GET handler is the resource cleanup that has to
+ * be done after the response is sent
  * 
  * @author Florin Iordache
  * 
  */
 
-public class HttpPostResponseHandler implements HttpRequestHandler {
+public class HttpPostResponseHandler extends HttpBaseResponseHandler implements
+		HttpRequestHandler {
 
 	@Override
 	public HttpResponse handle(HttpRequest request) {
-		// TODO Spawn new process
-		//TODO Pass request body input stream to the spawned process input stream
-		//TODO Relay process output stream as the response output stream
 		
-		HttpResponse response = new HttpResponse(200);
-		response.addHeader("Content-Type", "text/html");
+		//use the base handler
+		HttpResponse response = super.handle(request);
 		
-		//passing a resource cleaner to the response object
-		//it will perform any needed operations designated by the request body object
+		// this is a POST request, make sure we clean up any temp file that was
+		// created in the process
 		response.setCleaner(request.getRequestBody().getCleaner());
 		
 		return response;
 	}
-
+	
 }

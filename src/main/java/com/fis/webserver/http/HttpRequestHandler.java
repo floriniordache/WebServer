@@ -11,5 +11,12 @@ import com.fis.webserver.model.http.HttpResponse;
  */
 
 public interface HttpRequestHandler {
+	
+	/**
+	 * Handles a http request
+	 * 
+	 * @param request HttpRequest object that needs to be handled
+	 * @return a HttpResponse object
+	 */
 	public HttpResponse handle(HttpRequest request);
 }

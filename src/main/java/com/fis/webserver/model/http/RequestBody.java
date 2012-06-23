@@ -195,7 +195,8 @@ public class RequestBody {
 	private OutputStream createTempFile() {
 		FileOutputStream tempOS = null;
 		try {
-			tempFile = new File(System.currentTimeMillis()+".tmp");
+			//tempFile = new File(System.currentTimeMillis()+".tmp");
+			tempFile = File.createTempFile("FISServer", ".tmp");
 			tempOS = new FileOutputStream(tempFile);
 		}
 		catch(Exception e) {

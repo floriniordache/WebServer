@@ -13,7 +13,7 @@ import com.fis.webserver.model.http.HttpResponse;
  *
  */
 
-public class HttpDefaultRequestHandler implements HttpRequestHandler {
+public class HttpUnimplementedRequestHandler implements HttpRequestHandler {
 
 	@Override
 	public HttpResponse handle(HttpRequest request) {
@@ -22,5 +22,4 @@ public class HttpDefaultRequestHandler implements HttpRequestHandler {
 		
 		return response;
 	}
-
 }

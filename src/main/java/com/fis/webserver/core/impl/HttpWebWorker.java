@@ -52,7 +52,7 @@ public class HttpWebWorker implements WebWorker {
 		
 		this.workQueue = workQueue;
 		
-		newClientsQueue = new ArrayBlockingQueue<SocketChannel>(10);
+		newClientsQueue = new ArrayBlockingQueue<SocketChannel>(maxClients + 1);
 		
 		pendingResponses = new HashMap<SelectionKey, IncrementalResponseWriter>();
 		
@@ -74,7 +74,7 @@ public class HttpWebWorker implements WebWorker {
 		//handle the reading requests and writing responses to the registered channels
 		while(true) {
 			try {
-				logger.debug("Waiting to read data");
+				logger.trace("Waiting to read data");
 				
 				//wait for at least one incoming connection
 				socketSelector.select();
@@ -103,13 +103,13 @@ public class HttpWebWorker implements WebWorker {
 					
 					//read the data
 					if(selectionKey.isReadable()) {
-						logger.debug("Reading request from socket");
+						logger.trace("Reading request from socket");
 						
 						readRequest(selectionKey);
 						
 					}
 					else if( selectionKey.isWritable() ) {
-						logger.debug("Writing response to socket");
+						logger.trace("Writing response to socket");
 						
 						writeResponse(selectionKey);
 					}
@@ -128,10 +128,17 @@ public class HttpWebWorker implements WebWorker {
 		// accept the client for handling only if there are still more client
 		// slots available
 		if( freeClientSlots > 1 ) {
-			newClientsQueue.add(socketChannel);
-			socketSelector.wakeup();
-			freeClientSlots --;
-			return true;
+			
+			//see if we can insert new client in the queue
+			if(newClientsQueue.offer(socketChannel)) {
+				socketSelector.wakeup();
+				freeClientSlots --;
+				return true;
+			}
+			else {
+				//queue is full
+				logger.error("WebWorker incoming client queue is full!");
+			}
 		}
 		
 		return false;
@@ -218,6 +225,12 @@ public class HttpWebWorker implements WebWorker {
 				socketChannel.write(dataBuffer);
 			} catch (IOException e) {
 				logger.error("Error writing to socket!", e);
+				
+				//close the channel
+				closeChannel(key);
+				
+				//remove the helper response writer from the pending send data queue
+				pendingResponses.remove(key);
 			}
 			
 			//check if processing is finished

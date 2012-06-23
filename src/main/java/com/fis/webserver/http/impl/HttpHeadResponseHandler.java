@@ -5,7 +5,7 @@ import com.fis.webserver.model.http.HttpRequest;
 import com.fis.webserver.model.http.HttpResponse;
 
 /**
- * Request handler for the GET http method
+ * Request handler for the HEAD http method
  * 
  *
  * 
@@ -13,12 +13,19 @@ import com.fis.webserver.model.http.HttpResponse;
  *
  */
 
-public class HttpGetResponseHandler extends HttpBaseResponseHandler implements
+public class HttpHeadResponseHandler extends HttpBaseResponseHandler implements
 		HttpRequestHandler {
 	
 	@Override
 	public HttpResponse handle(HttpRequest request) {
 		return super.handle(request);
 	}
-
+	
+	/**
+	 * HEAD methods must not include a response
+	 */
+	@Override
+	public boolean containsResponseBody() {
+		return false;
+	}
 }

@@ -63,16 +63,7 @@ public class WorkerManager {
 		for( int workerIdx = 0 ; workerIdx < WebServerConfiguration.INSTANCE.getMinWorkers() ; workerIdx++ ) {
 			
 			//create new worker that can handle the max number of clients defined by the config
-			WebWorker worker = new HttpWebWorker(
-					WebServerConfiguration.INSTANCE.getClientsPerWorker(), requestParserWorkQueue);
-			
-			//create and start new thread that will run the worker
-			Thread workerThread = new Thread(worker);
-			workerThread.setName("Worker " + workerIdx);
-			workerThread.start();
-			
-			//add the worker to the pool
-			workerPool.add(worker);
+			spawnWorker();
 		}
 		
 		//start the request parser thread
@@ -105,30 +96,74 @@ public class WorkerManager {
 		//determine the lowest loaded worker
 		WebWorker lowestLoaded = null;
 		
+		int totalFreeSlots = 0;
+		
 		for(WebWorker worker : workerPool) {
 			if (lowestLoaded == null
 					|| lowestLoaded.getFreeSlots() < worker.getFreeSlots()) {
 				lowestLoaded = worker;
 			}
+			
+			totalFreeSlots += worker.getFreeSlots();
 		}
 		
 		logger.debug("Registering the new socket channel with one of the workers...");
 		
 		//try to pass the socket to the lowest loaded worker
 		if( !lowestLoaded.handle( socketChannel ) ) {
-			logger.error("All existing workers are full, rejecting request!");
-			
-			//reject the request for the moment
-			try {
-				socketChannel.close();
-			} catch (IOException e) {
-				logger.error("Error while closing channel!", e);
+			// if the lowest loaded worker can't handle a new client, try to see
+			// if we can spawn another web worker
+			if(workerPool.size() < WebServerConfiguration.INSTANCE.getMaxWorkers()) {
+				
+				//we can spawn another worker
+				WebWorker newWorker = spawnWorker();
+				
+				//send the request to the newly spawned worker
+				newWorker.handle(socketChannel);
+			}
+			else {
+				logger.error("Maximum number of clients reached, consider tuning the server parameters to be able to support more!");
+				logger.error("All existing workers are full, rejecting request!");
+
+				//reject the request, can't handle it
+				try {
+					socketChannel.close();
+				} catch (IOException e) {
+					logger.error("Error while closing channel!", e);
+				}
 			}
 		}
+		
+		logger.debug("Total client free slots: " + totalFreeSlots);
 	}
 	
 	/**
 	 * 
+	 * Spawns new worker thread
+	 * 
+	 */
+	private WebWorker spawnWorker() {
+		//create new worker that can handle the max number of clients defined by the config
+		WebWorker worker = new HttpWebWorker(
+				WebServerConfiguration.INSTANCE.getClientsPerWorker(), requestParserWorkQueue);
+		
+		//create and start new thread that will run the worker
+		Thread workerThread = new Thread(worker);
+		workerThread.setName("Worker " + workerPool.size());
+		workerThread.start();
+		
+		//add the worker to the pool
+		workerPool.add(worker);
+		
+		return worker;
+	}
+
+	/**
+	 * Determines which of the current pooled workers should handle a response
+	 * 
+	 * The HttpResponsePayload instance holds the SelectionKey of the client that sent the request
+	 * 
+	 * The same worker that read the request will also send the response.
 	 * 
 	 * @param response
 	 */

@@ -1,7 +1,7 @@
 package com.fis.webserver.http.impl;
 
 import java.io.File;
-import java.io.InputStream;
+import java.io.FileInputStream;
 import java.util.HashMap;
 
 import org.apache.log4j.Logger;
@@ -32,7 +32,7 @@ public class HttpBaseResponseHandler implements HttpRequestHandler {
 		
 		HashMap<String, String> contentHeaders = new HashMap<String, String>();
 		
-		InputStream responseBody = null;
+		FileInputStream responseBody = null;
 		
 		int statusCode = 404;
 		if( requestedFile != null ) {
@@ -55,8 +55,11 @@ public class HttpBaseResponseHandler implements HttpRequestHandler {
 		//add content related headers to the response headers
 		response.addAll(contentHeaders);
 		
-		//update the response with the input stream of the requested resource
-		response.setContentStream(responseBody);
+		// update the response with the file channel of the requested resource
+		// if there is an associated InputStream
+		if( responseBody != null ) {
+			response.setContentChannel(responseBody.getChannel());
+		}
 		
 		return response;
 	}

@@ -8,7 +8,6 @@ import com.fis.webserver.http.HttpRequestHandler;
 import com.fis.webserver.http.HttpRequestHandlerFactory;
 import com.fis.webserver.http.ResponseBuilder;
 import com.fis.webserver.model.HttpRequestPayload;
-import com.fis.webserver.model.HttpResponsePayload;
 import com.fis.webserver.model.http.HttpRequest;
 import com.fis.webserver.model.http.HttpResponse;
 import com.fis.webserver.pool.WorkerManager;
@@ -49,7 +48,7 @@ public class HttpResponseBuilder implements ResponseBuilder {
 				HttpResponse response = respond(requestData.getRequest());
 				
 				//send the response to the worker manager to send it back to the client
-				workManager.sendResponse(new HttpResponsePayload(requestData.getKey(), response));
+				//workManager.sendResponse(new HttpResponsePayload(requestData.getKey(), response));
 			} catch (InterruptedException e) {
 				logger.error("Could not read new request object from the work queue!", e);
 			}

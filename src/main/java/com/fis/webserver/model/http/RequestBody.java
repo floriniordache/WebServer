@@ -1,16 +1,13 @@
 package com.fis.webserver.model.http;
 
-import java.io.ByteArrayInputStream;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 
 import org.apache.log4j.Logger;
 
+import com.fis.webserver.config.WebServerConfiguration;
 import com.fis.webserver.util.cleaner.Cleaner;
 import com.fis.webserver.util.cleaner.TempFileCleaner;
 
@@ -34,9 +31,9 @@ public class RequestBody {
 	//flag to indicate whether to cache the entity body or not
 	private boolean cachedEntityBody;
 	
-	// output stream where the entity body will be written when its size exceeds
+	// FileChannel of the file where the entity body will be written when its size exceeds
 	// the maximum cached size
-	private OutputStream entityBodyOutputStream;
+	private FileChannel entityBodyFileChannel;
 	
 	// temporary storage for the request body if it's larger than the cached size
 	private File tempFile;
@@ -48,13 +45,10 @@ public class RequestBody {
 	// max allowed length of the entity body, as per the Content-Length http header
 	private long maxEntityBodyLength;
 
-	//input stream of the request entity body(if any)
-	private InputStream entityBodyInputStream;
-
 	public RequestBody() {
 		cachedEntityBody = true;
 		
-		entityBodyOutputStream = null;
+		entityBodyFileChannel = null;
 		
 		entityBody = null;
 		
@@ -69,12 +63,12 @@ public class RequestBody {
 		return tempFile;
 	}
 	
-	public InputStream getEntityBodyInputStream() {
-		return entityBodyInputStream;
+	public FileChannel getEntityBodyChannel() {
+		return entityBodyFileChannel;
 	}
 
-	public void setEntityBodyInputStream(InputStream entityBodyInputStream) {
-		this.entityBodyInputStream = entityBodyInputStream;
+	public void setEntityBodyChannel(FileChannel entityBodyFileChannel) {
+		this.entityBodyFileChannel = entityBodyFileChannel;
 	}
 	
 	public long getMaxEntityBodyLength() {
@@ -99,44 +93,32 @@ public class RequestBody {
 	public boolean getShouldFinish() {
 		return (maxEntityBodyLength > 0 && entityBodyLength >= maxEntityBodyLength);
 	}
-	
+
 	/**
 	 * Called when reading the request body is considered to be finished.
 	 * 
-	 * Closes the output stream if a temp file is used to store the request body.
+	 * Prepares the entity body for reading.
 	 * 
-	 * Initializes an InputStream over the request body as follows:
-	 * 	- FileInputStream if a temp file is used
-	 * 	- ByeArrayInputStream if the request body is cached into memory
+	 * If the request body is cached, the ByteBuffer holding it will be flipped
+	 * to prepare for reading calls.
+	 * If the request body is stored in a
+	 * temporary file, the associated file channel is prepared for reading by
+	 * positioning the current position of the FileChannel to the beginning
 	 * 
 	 */
 	public void done() {
 		if( tempFile != null ) {
-			//need to close the output stream
-			try {
-				entityBodyOutputStream.close();
+			//position the entity body channel to the beginning, to prepare for reading
+			try {				
+				//position to the beginning
+				entityBodyFileChannel.position(0);
 			} catch (Exception e) {
-				logger.warn("Could not properly close the temporary file output stream!", e);
-			}
-		}
-		
-		//create an input stream of the body content
-		
-		//we have a temporary file, create a new FileInputStream
-		if(tempFile != null) {
-			try {
-				entityBodyInputStream = new FileInputStream(tempFile);
-			} catch (FileNotFoundException e) {
-				logger.error("Could not open the temporary file for reading!", e);
+				logger.warn("Could not prepare the temporary file for reading!", e);
 			}
 		}
 		else {
-		//content is small enough to cache to memory, create a new ByteArrayInputStream
+			//flip the entity body byte buffer to prepare for reading
 			entityBody.flip();
-			byte[] writeBuf = new byte[entityBody.limit()];
-			entityBody.get(writeBuf);
-			
-			entityBodyInputStream = new ByteArrayInputStream(writeBuf);
 		}
 	}
 	
@@ -164,7 +146,7 @@ public class RequestBody {
 				//not enough space in memory buffer, write to file
 
 				//create temporary file
-				entityBodyOutputStream = createTempFile();
+				entityBodyFileChannel = createTempFile();
 				
 				//write to file
 				entityBody.flip();
@@ -190,20 +172,23 @@ public class RequestBody {
 	/**
 	 * Creates and opens a temporary file for writing
 	 * 
-	 * @return OutputStream of the temporary file or null in case of an error
+	 * @return FileChannel of the temporary file or null in case of an error
 	 */
-	private OutputStream createTempFile() {
-		FileOutputStream tempOS = null;
+	private FileChannel createTempFile() {
+		FileChannel tempFileChannel = null;
 		try {
-			//tempFile = new File(System.currentTimeMillis()+".tmp");
-			tempFile = File.createTempFile("FISServer", ".tmp");
-			tempOS = new FileOutputStream(tempFile);
+			//create a temporary file
+			tempFile = File.createTempFile("FISServer", ".tmp", new File(WebServerConfiguration.INSTANCE.getTempFolder()));
+			
+			//open the file and return the associated file channel
+			FileOutputStream tempOS = new FileOutputStream(tempFile);
+			tempFileChannel = tempOS.getChannel();
 		}
 		catch(Exception e) {
 			logger.error("Could not create temporary file to store request body!", e);
 		}
 		
-		return tempOS;
+		return tempFileChannel;
 	}
 	
 	/**
@@ -213,11 +198,7 @@ public class RequestBody {
 	 */
 	private void writeToTempFile(ByteBuffer buf) {
 		try {
-			byte[] writeBuf = new byte[buf.limit()];
-			buf.get(writeBuf);
-			
-			entityBodyOutputStream.write(writeBuf);
-			entityBodyOutputStream.flush();
+			entityBodyFileChannel.write(buf);
 		}
 		catch(Exception e) {
 			logger.error("Could not write request body to temporary file!", e);
@@ -232,6 +213,6 @@ public class RequestBody {
 	 *         the streams
 	 */
 	public Cleaner getCleaner() {
-		return new TempFileCleaner(entityBodyInputStream, tempFile);
+		return new TempFileCleaner(entityBodyFileChannel, tempFile);
 	}
 }

@@ -3,8 +3,6 @@ package com.fis.webserver.core;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 
-import com.fis.webserver.model.http.HttpResponse;
-
 /**
  * Public interface describing the worker thread capabilities
  * 
@@ -30,14 +28,6 @@ public interface WebWorker extends Runnable {
 	 * @return true if the client is handled by this worker
 	 */
 	public boolean isHandlingClient(SelectionKey key);
-	
-	/**
-	 * Sends a response back to the client
-	 * 
-	 * @param key SelectionKey representing the client connection
-	 * @param response the response that needs to be sent
-	 */
-	public void sendResponse(SelectionKey key, HttpResponse response);
 	
 	/**
 	 * Closes the channel associates with this key and cancels the key handling

@@ -1,62 +1,37 @@
 package com.fis.webserver.pool;
 
 import java.io.IOException;
-import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
+import java.util.LinkedList;
 
 import org.apache.log4j.Logger;
 
 import com.fis.webserver.config.WebServerConfiguration;
 import com.fis.webserver.core.WebWorker;
 import com.fis.webserver.core.impl.HttpWebWorker;
-import com.fis.webserver.http.ResponseBuilder;
-import com.fis.webserver.http.impl.HttpRequestParser;
-import com.fis.webserver.http.impl.HttpResponseBuilder;
-import com.fis.webserver.model.HttpRequestPayload;
-import com.fis.webserver.model.HttpResponsePayload;
-import com.fis.webserver.model.SocketReadPayload;
 
 /**
- * WebWorker singleton thread pool manager
+ * WebWorker thread pool manager
+ * 
+ * It dispatches the incoming connections to one of the WebWorker objects in the
+ * internal pool, using a Round Robin balancing algorithm
+ * 
+ * The linked list is used as a queue: when dispatching an incoming connection
+ * to one of the workers, the workers will be extracted from the beginning of
+ * the list, and re-added at the end. If the pool is exhausted, the worker will try to
+ * spawn a new worker thread that will handle the new connection
  * 
  * @author Florin Iordache
- *
+ * 
  */
 
 public class WorkerManager {
 	public static final Logger logger = Logger.getLogger(WorkerManager.class);
 	
-	private List<WebWorker> workerPool;
-	
-	private HttpRequestParser requestParserWorker;
-	
-	private ResponseBuilder responseBuilderWorker;
-	
-	// the ResponseBuilder thread waits on this queue for new valid parsed http
-	// requests that need to be solved 
-	private BlockingQueue<HttpRequestPayload> responderWorkQueue;
-	
-	// The RequestParser thread waits on this queue for new incoming data from
-	// the connected clients. The workers will push newly read data into this
-	// queue as it is available for reading from the sockets.
-	// The data will need to be parsed into a valid
-	// HttpRequest if possible
-	private BlockingQueue<SocketReadPayload> requestParserWorkQueue;
-	
+	private LinkedList<WebWorker> workerPool;
+		
 	public WorkerManager() {
-		
-		//create the work queues
-		requestParserWorkQueue = new ArrayBlockingQueue<SocketReadPayload>(
-				3 * WebServerConfiguration.INSTANCE.getClientsPerWorker(), true);
-		
-		responderWorkQueue = new ArrayBlockingQueue<HttpRequestPayload>(
-				3 * WebServerConfiguration.INSTANCE.getClientsPerWorker(), true);
-		
-		workerPool = new ArrayList<WebWorker>();
+		workerPool = new LinkedList<WebWorker>();
 		// start the worker threads, based on the minimum workers setting of the
 		// server
 		logger.debug("Spawning " + WebServerConfiguration.INSTANCE.getMinWorkers() + " worker threads!");
@@ -65,21 +40,6 @@ public class WorkerManager {
 			//create new worker that can handle the max number of clients defined by the config
 			spawnWorker();
 		}
-		
-		//start the request parser thread
-		logger.debug("Spawning RequestParser worker");
-		requestParserWorker = new HttpRequestParser(requestParserWorkQueue,
-				responderWorkQueue);
-		Thread parserWorkerThread = new Thread(requestParserWorker);
-		parserWorkerThread.setName("RequestParser");
-		parserWorkerThread.start();
-		
-		//start the response builder thread
-		logger.debug("Spawning ResponseBuilder worker");
-		responseBuilderWorker = new HttpResponseBuilder(responderWorkQueue, this);
-		Thread responseBuilderWorkerThread = new Thread(responseBuilderWorker);
-		responseBuilderWorkerThread.setName("ResponseBuilder");
-		responseBuilderWorkerThread.start();
 		
 		logger.debug("Worker threads spawned!");
 	}
@@ -93,36 +53,37 @@ public class WorkerManager {
 	public void handleNewClient(SocketChannel socketChannel) {
 		logger.debug("New incoming client, selecting worker thread from the pool...");
 		
-		//determine the lowest loaded worker
-		WebWorker lowestLoaded = null;
+		//get the first worker
+		WebWorker firstWorker = workerPool.poll();
+		WebWorker handlingWorker = firstWorker;
 		
-		int totalFreeSlots = 0;
-		
-		for(WebWorker worker : workerPool) {
-			if (lowestLoaded == null
-					|| lowestLoaded.getFreeSlots() < worker.getFreeSlots()) {
-				lowestLoaded = worker;
+		boolean clientHandled = false;
+		boolean poolExhausted = false;
+		while(!clientHandled && !poolExhausted) {
+			//try to pass the channel to the handlingWorker if it has empty client slots
+			if( handlingWorker.getFreeSlots() > 0 ) {
+				clientHandled = handlingWorker.handle(socketChannel);
 			}
 			
-			totalFreeSlots += worker.getFreeSlots();
+			//put the handling worker at the end of the queue
+			workerPool.add(handlingWorker);
+			
+			
+			if( !clientHandled ) {
+				handlingWorker = workerPool.poll();
+				
+				//we have exhausted the pool if we reach the same worker we started with
+				poolExhausted = firstWorker.equals(handlingWorker);
+			}
 		}
 		
-		logger.debug("Registering the new socket channel with one of the workers...");
-		
-		//try to pass the socket to the lowest loaded worker
-		if( !lowestLoaded.handle( socketChannel ) ) {
-			// if the lowest loaded worker can't handle a new client, try to see
-			// if we can spawn another web worker
-			if(workerPool.size() < WebServerConfiguration.INSTANCE.getMaxWorkers()) {
-				
-				//we can spawn another worker
-				WebWorker newWorker = spawnWorker();
-				
-				//send the request to the newly spawned worker
+		//if no available worker is found, try to increase the pool
+		if( !clientHandled && poolExhausted ) {			
+			WebWorker newWorker = increasePool();
+			if( newWorker != null ) {
 				newWorker.handle(socketChannel);
 			}
 			else {
-				logger.error("Maximum number of clients reached, consider tuning the server parameters to be able to support more!");
 				logger.error("All existing workers are full, rejecting request!");
 
 				//reject the request, can't handle it
@@ -134,7 +95,30 @@ public class WorkerManager {
 			}
 		}
 		
-		logger.debug("Total client free slots: " + totalFreeSlots);
+	}
+	
+	/**
+	 * Try to increase the pool , if the settings permit it
+	 * 
+	 * @return a new WebWorker
+	 */
+	private WebWorker increasePool() {
+		// if the lowest loaded worker can't handle a new client, try to see
+		// if we can spawn another web worker
+		if(workerPool.size() < WebServerConfiguration.INSTANCE.getMaxWorkers()) {
+			
+			//we can spawn another worker
+			WebWorker newWorker = spawnWorker();
+			
+			workerPool.add(newWorker);
+			
+			return newWorker;
+		}
+		else {
+			logger.error("Maximum number of clients reached, consider tuning the server parameters to be able to support more!");
+		}
+		
+		return null;
 	}
 	
 	/**
@@ -143,9 +127,10 @@ public class WorkerManager {
 	 * 
 	 */
 	private WebWorker spawnWorker() {
+		logger.info("Spawning new WebWorker thread!");
 		//create new worker that can handle the max number of clients defined by the config
 		WebWorker worker = new HttpWebWorker(
-				WebServerConfiguration.INSTANCE.getClientsPerWorker(), requestParserWorkQueue);
+				WebServerConfiguration.INSTANCE.getClientsPerWorker());
 		
 		//create and start new thread that will run the worker
 		Thread workerThread = new Thread(worker);
@@ -156,25 +141,5 @@ public class WorkerManager {
 		workerPool.add(worker);
 		
 		return worker;
-	}
-
-	/**
-	 * Determines which of the current pooled workers should handle a response
-	 * 
-	 * The HttpResponsePayload instance holds the SelectionKey of the client that sent the request
-	 * 
-	 * The same worker that read the request will also send the response.
-	 * 
-	 * @param response
-	 */
-	public void sendResponse(HttpResponsePayload response) {
-		logger.debug("Sending response to the client...");
-		SelectionKey key = response.getKey();
-		
-		for( WebWorker worker : workerPool ) {
-			if( worker.isHandlingClient(key) ) {
-				worker.sendResponse(key, response.getResponse());
-			}
-		}
 	}
 }

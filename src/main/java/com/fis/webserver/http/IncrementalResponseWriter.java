@@ -1,9 +1,7 @@
 package com.fis.webserver.http;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 
 import org.apache.log4j.Logger;
 
@@ -26,83 +24,64 @@ public class IncrementalResponseWriter {
 	public static final Logger logger = Logger.getLogger(IncrementalResponseWriter.class);
 	
 	private HttpResponse response;
-	private InputStream headerInputStream;
 	
-	//indicates that the header has been written
-	private boolean headerDone;
-	
-	// byte buffer used for reading the data from the response input streams
-	private byte[] readBuf;
+	//buffer containing the http response header
+	ByteBuffer responseHeader;
 	
 	public IncrementalResponseWriter(HttpResponse response) {
 		this.response = response;
 		
 		//prepare the response header
-		StringBuilder responseHeader = response.getSerializedHeader();
-		
-		//create an input stream for the header
-		headerInputStream = new ByteArrayInputStream(responseHeader.toString().getBytes());
-		
-		headerDone = false;
-		
-		readBuf = new byte[8192];
+		responseHeader = response.getRawHeader();
 	}
 
 	/**
 	 * Writes a portion of the response to the received byte buffer
 	 * 
 	 * @param destination
-	 *            - byte buffer that will receive a part (or all) of the
+	 *         - byte buffer that will receive a part (or all) of the
 	 *            serialized response
-	 * @return - true if the response has been completely serialized, false
-	 *         otherwise
+	 * @return - true if the response has been completely transferred , false
+	 *         	  otherwise
 	 */
 	public boolean incrementalWriteResponse(ByteBuffer destination) {
-		int numRead = 0;
-		
 		//check the remaining space in the destination buffer
 		int remainingBufferCapacity = destination.remaining();
 		
 		boolean processingFinished = false;
 		
-		while(remainingBufferCapacity > 0) {
-			//make sure we don't try to read too much
-			int bytesToRead = remainingBufferCapacity > readBuf.length ? readBuf.length
-					: remainingBufferCapacity;
-			
-			//first write the header
-			if( !headerDone ) {
-				numRead = readInputStreamChunk(headerInputStream, destination,
-						bytesToRead);
-				if (numRead < 0) {
-					// no more bytes to read for the header
-					// switch the flag indicating the header processing has
-					// finished
-					headerDone = true;
-				}
-			}
-			else {
-				InputStream responseContentStream = response.getContentStream();
-				//read from the response's content input stream, if available
-				if( responseContentStream == null ) {
-					//no content, mark the processing as finished and break
-					processingFinished = true;
-					
-					break;
+		try {
+			while(remainingBufferCapacity > 0) {
+				//check if we finished writing the header
+				if( responseHeader.remaining() > 0 ) {
+					writeResponseChunk(responseHeader, destination);
 				}
 				else {
-					
-					numRead = readInputStreamChunk(responseContentStream, destination,
-							bytesToRead);
-					if(numRead < 0) {
-						//finished with the content
+					//check if the response has an associated file channel
+					FileChannel responseResourceChannel = response.getContentChannel();
+
+					//read from response file channel directly to destination buffer
+					if( responseResourceChannel != null ) {
+						responseResourceChannel.read(destination);
+						
+						//check if we finished writing the response
+						if(responseResourceChannel.position() >= responseResourceChannel.size() ) {
+							processingFinished = true;
+							break;
+						}
+					}
+					else {
+						//don't have any response body, signal the end of processing
 						processingFinished = true;
 						break;
 					}
 				}
+				
+				remainingBufferCapacity = destination.remaining();
 			}
-			
-			remainingBufferCapacity = destination.remaining();
+		}
+		catch(Exception e) {
+			logger.error("Error while writing response!", e);
 		}
 		
 		if( processingFinished ) {			
@@ -117,43 +96,21 @@ public class IncrementalResponseWriter {
 	}
 
 	/**
-	 * Attempts to read up to size bytes from the inputStream and writes the
-	 * read content into the output buffer
+	 * Attempts to write up to size bytes from the sourceBuffer to the outputBuffer
 	 * 
-	 * @param inputStream - the source of the read data
+	 * @param sourceBuffer - the source of the read data
 	 * @param outputBuffer - destination of the read data
-	 * @param size - maximum number of bytes to be read
-	 * @return number of bytes actually read or -1 in case of any error
+	 * @return number of bytes actually read/written
 	 */
-	private int readInputStreamChunk(InputStream inputStream, ByteBuffer outputBuffer, int size ) {
-		int numRead = 0;
-		try {
-			if((numRead = inputStream.read(readBuf, 0 , size)) >= 0) {
-				outputBuffer.put(readBuf, 0, numRead);
-			}
-			else {
-				//no more data to read from stream, closing
-				inputStream.close();
-			}
-		} catch(IOException e) {
-			logger.error("Error while serializing response content!", e);
-			try {
-				numRead = -1;
-				
-				//attempt to close the stream
-				inputStream.close();
-			} catch (IOException e1) {
-				//ignored
-			}
+	private int writeResponseChunk(ByteBuffer sourceBuffer, ByteBuffer outputBuffer) {
+		//write response header bytes
+		//make sure we don't overflow the destination
+		int numBytes = sourceBuffer.remaining() <= outputBuffer.remaining() ?
+				sourceBuffer.remaining() : outputBuffer.remaining();
+		for( int i = 0 ; i < numBytes ; i++ ) {
+			outputBuffer.put(sourceBuffer.get());
 		}
 		
-		return numRead;
-	}
-	
-	/**
-	 * Cleans up the resources associated with this response
-	 */
-	public void cleanup() {
-		
+		return numBytes;
 	}
 }

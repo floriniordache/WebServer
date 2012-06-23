@@ -59,7 +59,7 @@ public class HttpRequestParserWorkState {
 	public static final String defaultEncoding = "ISO-8859-1";
 	
 	//header decoder
-	public static final CharsetDecoder decoder =  Charset.forName(defaultEncoding).newDecoder();
+	private CharsetDecoder decoder;
 	
 	public  HttpRequestParserWorkState() {
 		buf = ByteBuffer.allocate(8190*2);
@@ -68,6 +68,8 @@ public class HttpRequestParserWorkState {
 		httpRequest = new HttpRequest();
 		
 		currentState = STATE_REQUEST_LINE;
+		
+		decoder =  Charset.forName(defaultEncoding).newDecoder();
 		
 		finished = false;
 	}
@@ -86,7 +88,7 @@ public class HttpRequestParserWorkState {
 	 * @return boolean indicating if the request parsing has finished
 	 * @param newData
 	 */
-	public boolean newData(byte[] newData) {		
+	public boolean newData(ByteBuffer newData) {		
 		try {
 			//append the data to the internal buffer
 			buf.put(newData);

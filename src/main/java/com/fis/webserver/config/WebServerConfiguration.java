@@ -32,11 +32,15 @@ public enum WebServerConfiguration {
 	//document root of the server
 	public static final String DOCUMENT_ROOT_PROPERTY = "server.document.root";
 	
+	//temporary folder
+	public static final String TEMP_FOLDER_PROPERTY = "server.folder.temp";
+	
 	private Integer minWorkers;
 	private Integer maxWorkers;
 	private Integer portNumber;
 	private Integer clientsPerWorker;
 	private String docRoot;
+	private String tempFolder;
 	private Boolean configOk;
 	
 	private WebServerConfiguration() {
@@ -51,9 +55,10 @@ public enum WebServerConfiguration {
 		maxWorkers = serverConfigLoader.getIntProperty(WORKERS_MAX_PROPERTY);
 		clientsPerWorker = serverConfigLoader.getIntProperty(MAX_CLIENTS_PER_WORKER_PROPERTY);
 		docRoot = serverConfigLoader.getProperty(DOCUMENT_ROOT_PROPERTY);
+		tempFolder = serverConfigLoader.getProperty(TEMP_FOLDER_PROPERTY);
 		
 		if (portNumber == null || minWorkers == null || maxWorkers == null
-				|| clientsPerWorker == null || docRoot == null) {
+				|| clientsPerWorker == null || docRoot == null || tempFolder == null) {
 			logger.error("Error loading " + WEB_SERVER_CONFIG_FILE + "!");
 			
 			//mark the config as being incomplete
@@ -85,5 +90,9 @@ public enum WebServerConfiguration {
 	
 	public Boolean isConfigValid() {
 		return configOk;
+	}
+	
+	public String getTempFolder() {
+		return tempFolder;
 	}
 }

@@ -14,8 +14,11 @@ import java.util.concurrent.BlockingQueue;
 import org.apache.log4j.Logger;
 
 import com.fis.webserver.core.WebWorker;
+import com.fis.webserver.http.HttpRequestHandler;
+import com.fis.webserver.http.HttpRequestHandlerFactory;
+import com.fis.webserver.http.HttpRequestParserWorkState;
 import com.fis.webserver.http.IncrementalResponseWriter;
-import com.fis.webserver.model.SocketReadPayload;
+import com.fis.webserver.model.http.HttpRequest;
 import com.fis.webserver.model.http.HttpResponse;
 
 /**
@@ -37,24 +40,24 @@ public class HttpWebWorker implements WebWorker {
 	// queue containing the new SocketChannels that need to be listened by this
 	// worker
 	private BlockingQueue<SocketChannel> newClientsQueue;
-	
-	// work queue for pushing the read data
-	private BlockingQueue<SocketReadPayload> workQueue;
-	
+		
 	//map with the pending responses that need to be sent back to the clients
 	private HashMap<SelectionKey, IncrementalResponseWriter> pendingResponses;
+	
+	//map with the request reads that are in progress
+	private HashMap<SelectionKey, HttpRequestParserWorkState> pendingReads;
 	
 	//buffer used to read and write data
 	private ByteBuffer dataBuffer;
 	
-	public HttpWebWorker(int maxClients, BlockingQueue<SocketReadPayload> workQueue) {
+	public HttpWebWorker(int maxClients ) {
 		this.freeClientSlots = maxClients;
-		
-		this.workQueue = workQueue;
 		
 		newClientsQueue = new ArrayBlockingQueue<SocketChannel>(maxClients + 1);
 		
 		pendingResponses = new HashMap<SelectionKey, IncrementalResponseWriter>();
+		
+		pendingReads = new HashMap<SelectionKey, HttpRequestParserWorkState>();
 		
 		try {
 			// Create a new selector
@@ -137,10 +140,11 @@ public class HttpWebWorker implements WebWorker {
 			}
 			else {
 				//queue is full
-				logger.error("WebWorker incoming client queue is full!");
+				logger.trace("WebWorker incoming client queue is full! queue size=" + newClientsQueue.size());
 			}
 		}
 		
+		logger.trace("WebWorker incoming client queue is full, can't handle client!");
 		return false;
 	}
 	
@@ -167,6 +171,9 @@ public class HttpWebWorker implements WebWorker {
 		catch(IOException e) {
 			//the remote host has closed the connection
 			closeChannel(key);
+			
+			//remove this work state from the map
+			pendingReads.remove(key);
 		}
 
 		/*
@@ -175,23 +182,66 @@ public class HttpWebWorker implements WebWorker {
 		 */
 		if( bytesRead < 0 ) {
 			closeChannel(key);
+			
+			//remove this work state from the map
+			pendingReads.remove(key);
 		}
-				
-		try {
+		else {
+			//continue with the request parsing
 			dataBuffer.flip();
 			
-			//copy the buffer to send it to the parsing worker
-			byte[] readData = new byte[dataBuffer.limit()];
-			dataBuffer.get(readData);
+			//see if we have a pending read
+			HttpRequestParserWorkState parserWorkState = pendingReads.get(key);
+			//if we don't, create a new one
+			if( parserWorkState == null ) {
+				parserWorkState = new HttpRequestParserWorkState();
+				
+				pendingReads.put(key, parserWorkState);
+			}
 			
-			//push the new data in the work queue
-			workQueue.put(new SocketReadPayload(key, readData));
-		}
-		catch (InterruptedException ie) {
-			logger.error("Worker interrupted while pushing newly read data to the work queue!", ie);
+			//copy the read buffer to the work state
+			boolean parsingFinished = parserWorkState.newData(dataBuffer);
+			
+			if( parsingFinished ) {
+				//parsing is finished, deliver the data in the exit queue
+				HttpRequest request = parserWorkState.getHttpRequest();
+				
+				//remove this work state from the map
+				pendingReads.remove(key);
+				
+				//respond to this request
+				respond(key, request);
+			}
 		}
 	}
 
+	/**
+	 * 
+	 * Prepares the http response after the request was successfully parsed
+	 * 
+	 *  @param key SelectionKey indicating the incoming connection
+	 *  @param request HttpRequest object
+	 * 
+	 */
+	private void respond(SelectionKey key, HttpRequest request) {
+		
+		//build the response
+		//get a handler capable to solve the request
+		HttpRequestHandler handler = HttpRequestHandlerFactory.createRequestHandler(request.getMethod());
+		
+		//delegate the handling of the request to the handler
+		HttpResponse response = handler.handle(request);
+		
+		//queue the response
+		//use an IncrementalResponseWriter to help with the serialization process
+		pendingResponses.put(key, new IncrementalResponseWriter(response));
+		
+		//register the socket channel for read operation
+		key.interestOps(SelectionKey.OP_WRITE);
+		
+		socketSelector.wakeup();
+	}
+	
 	/**
 	 * Sends the response to the socket channel associated with this key
 	 * 
@@ -261,18 +311,6 @@ public class HttpWebWorker implements WebWorker {
 	@Override
 	public boolean isHandlingClient(SelectionKey key) {
 		return socketSelector.keys().contains(key);
-	}
-
-	@Override
-	public void sendResponse(SelectionKey key, HttpResponse response) {		
-		//queue the response
-		//use an IncrementalResponseWriter to help with the serialization process
-		pendingResponses.put(key, new IncrementalResponseWriter(response));
-		
-		//register the socket channel for read operation
-		key.interestOps(SelectionKey.OP_WRITE);
-		
-		socketSelector.wakeup();
 	}
 
 	@Override

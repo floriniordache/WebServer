@@ -1,6 +1,7 @@
 package com.fis.webserver.model.http;
 
-import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -27,7 +28,8 @@ public class HttpResponse {
 	private int statusCode;
 	private HashMap<String, String> responseHeaders;
 	
-	private InputStream contentInputStream;
+	//FileChannel of the requested resource
+	private FileChannel contentChannel;
 	
 	//will perform the needed cleanup after the response is sent to the client
 	private Cleaner resourceCleaner;
@@ -48,7 +50,7 @@ public class HttpResponse {
 		responseHeaders.put("Date", df.format(new Date()));
 		responseHeaders.put("Connection", "Close");
 		
-		contentInputStream = null;
+		contentChannel = null;
 	}
 	
 	public int getStatusCode() {
@@ -67,12 +69,12 @@ public class HttpResponse {
 		responseHeaders.putAll(headers);
 	}
 	
-	public InputStream getContentStream() {
-		return contentInputStream;
+	public FileChannel getContentChannel() {
+		return contentChannel;
 	}
 	
-	public void setContentStream(InputStream contentInputStream) {
-		this.contentInputStream = contentInputStream;
+	public void setContentChannel(FileChannel contentChannel) {
+		this.contentChannel = contentChannel;
 	}
 	
 	public void setCleaner(Cleaner resourceCleaner) {
@@ -87,7 +89,12 @@ public class HttpResponse {
 		this.resourceCleaner = resourceCleaner;
 	}
 
-	public StringBuilder getSerializedHeader() {
+	/**
+	 * Compiles and returns a ByteBuffer containing the response header
+	 * 
+	 * @return ByteBuffer object
+	 */
+	public ByteBuffer getRawHeader() {
 		StringBuilder rawResponse = new StringBuilder(HTTP_VERSION);
 		rawResponse.append(" ");
 		rawResponse.append(statusCode);
@@ -97,6 +104,12 @@ public class HttpResponse {
 			rawResponse.append(headerEntry.getKey() + ": " + headerEntry.getValue() + "\r\n");
 		}
 		rawResponse.append("\r\n");
-		return rawResponse;
+		
+		ByteBuffer rawResponseBuffer = ByteBuffer.allocate(rawResponse.length());
+		rawResponseBuffer.put(rawResponse.toString().getBytes());
+		
+		//prepare the buffer for reading operations
+		rawResponseBuffer.flip();
+		return rawResponseBuffer;
 	}
 }

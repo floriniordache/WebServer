@@ -2,7 +2,6 @@ package com.fis.webserver.util;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.InputStream;
 
 import org.apache.log4j.Logger;
 
@@ -43,8 +42,8 @@ public class FileUtils {
 	 * @return a non null InputStream if the file exists and has been
 	 *         successfully opened
 	 */
-	public static InputStream getFileInputStream(File file) {
-		InputStream fileInputStream = null;
+	public static FileInputStream getFileInputStream(File file) {
+		FileInputStream fileInputStream = null;
 		
 		//attempt to open the file
 		try {

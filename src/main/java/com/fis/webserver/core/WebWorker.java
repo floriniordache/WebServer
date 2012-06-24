@@ -10,7 +10,7 @@ import java.nio.channels.SocketChannel;
  *
  */
 
-public interface WebWorker extends Runnable {
+public interface WebWorker extends Runnable, Comparable<WebWorker> {
 	
 	/**
 	 * Handles new client connection to be handled by this worker

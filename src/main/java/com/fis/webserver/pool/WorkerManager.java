@@ -2,7 +2,7 @@ package com.fis.webserver.pool;
 
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
-import java.util.LinkedList;
+import java.util.PriorityQueue;
 
 import org.apache.log4j.Logger;
 
@@ -28,10 +28,11 @@ import com.fis.webserver.core.impl.HttpWebWorker;
 public class WorkerManager {
 	public static final Logger logger = Logger.getLogger(WorkerManager.class);
 	
-	private LinkedList<WebWorker> workerPool;
-		
+	private PriorityQueue<WebWorker> workerPool;
+	
 	public WorkerManager() {
-		workerPool = new LinkedList<WebWorker>();
+		
+		workerPool = new PriorityQueue<WebWorker>();
 		// start the worker threads, based on the minimum workers setting of the
 		// server
 		logger.debug("Spawning " + WebServerConfiguration.INSTANCE.getMinWorkers() + " worker threads!");
@@ -43,7 +44,7 @@ public class WorkerManager {
 		
 		logger.debug("Worker threads spawned!");
 	}
-
+	
 	/**
 	 * On an incoming new connection the manager will select a thread from the
 	 * pool to handle this client
@@ -53,34 +54,31 @@ public class WorkerManager {
 	public void handleNewClient(SocketChannel socketChannel) {
 		logger.debug("New incoming client, selecting worker thread from the pool...");
 		
-		//get the first worker
-		WebWorker firstWorker = workerPool.poll();
-		WebWorker handlingWorker = firstWorker;
+		//get the lowest loaded worker
+		WebWorker handlingWorker = workerPool.poll();
 		
-		boolean clientHandled = false;
-		boolean poolExhausted = false;
-		while(!clientHandled && !poolExhausted) {
-			//try to pass the channel to the handlingWorker if it has empty client slots
-			if( handlingWorker.getFreeSlots() > 0 ) {
-				clientHandled = handlingWorker.handle(socketChannel);
-			}
+		if( handlingWorker == null) {
+			logger.fatal("Worker thread pool is empty!");
 			
-			//put the handling worker at the end of the queue
-			workerPool.add(handlingWorker);
-			
-			
-			if( !clientHandled ) {
-				handlingWorker = workerPool.poll();
-				
-				//we have exhausted the pool if we reach the same worker we started with
-				poolExhausted = firstWorker.equals(handlingWorker);
-			}
+			return;
 		}
 		
-		//if no available worker is found, try to increase the pool
-		if( !clientHandled && poolExhausted ) {			
+		boolean clientHandled = handlingWorker.handle(socketChannel);
+		
+		
+		//put the handling worker back in the queue
+		workerPool.add(handlingWorker);
+		
+		if( !clientHandled ) {
+			// if the lowest loaded worker can't handle the new client, we need
+			// to spawn another one
+			
+			logger.debug("No worker available, must try to increase pool size!");
+			
+			//increase pool method will automatically insert new worker in the queue
 			WebWorker newWorker = increasePool();
 			if( newWorker != null ) {
+				logger.debug("New worker created, passing the client socketChannel for handling!");
 				newWorker.handle(socketChannel);
 			}
 			else {
@@ -94,7 +92,6 @@ public class WorkerManager {
 				}
 			}
 		}
-		
 	}
 	
 	/**
@@ -109,8 +106,6 @@ public class WorkerManager {
 			
 			//we can spawn another worker
 			WebWorker newWorker = spawnWorker();
-			
-			workerPool.add(newWorker);
 			
 			return newWorker;
 		}
@@ -134,7 +129,7 @@ public class WorkerManager {
 		
 		//create and start new thread that will run the worker
 		Thread workerThread = new Thread(worker);
-		workerThread.setName("Worker " + workerPool.size());
+		workerThread.setName("WebWorker " + workerThread.getId());
 		workerThread.start();
 		
 		//add the worker to the pool

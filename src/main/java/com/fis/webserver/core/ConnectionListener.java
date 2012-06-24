@@ -1,8 +1,12 @@
 package com.fis.webserver.core;
 
 import java.net.InetSocketAddress;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+import java.util.Iterator;
 
 import org.apache.log4j.Logger;
 
@@ -28,6 +32,9 @@ public abstract class ConnectionListener extends Thread {
 	//incoming channel for accepting connections
 	private ServerSocketChannel serverSocketChannel;
 		
+	//the selector this listener will be monitoring
+	private Selector serverSelector;
+	
 	//flag indicating if the connection listener is initialized and listening for connections
 	private boolean initialized;
 	
@@ -47,8 +54,24 @@ public abstract class ConnectionListener extends Thread {
 			try {
 				logger.debug("Waiting for a new connection...");
 				
-				SocketChannel socketChannel = serverSocketChannel.accept();
-				acceptConnection(socketChannel);
+				//wait for an event on the selector
+				serverSelector.select();
+				
+				//iterate over the selected keys
+				logger.debug("Found incoming " + serverSelector.selectedKeys().size() + " new clients!");
+				Iterator<SelectionKey> selectedKeysIterator = serverSelector.selectedKeys().iterator();
+				while(selectedKeysIterator.hasNext()) {
+					
+					// get a selection key and remove it from the set(the
+					// selector does not automatically do that)
+					SelectionKey key = selectedKeysIterator.next();
+					selectedKeysIterator.remove();
+					
+					if( key.isValid() && key.isAcceptable() ) {
+						SocketChannel newClientSocketChannel = serverSocketChannel.accept();
+						acceptConnection(newClientSocketChannel);
+					}
+				}
 			}
 			catch(Exception e) {
 				logger.error("Error while waiting for new connection!", e);
@@ -61,13 +84,20 @@ public abstract class ConnectionListener extends Thread {
 		logger.debug("Initializing server socket channel on port " + port);
 		
 		try {
+			//initialize the selector
+			serverSelector = SelectorProvider.provider().openSelector();
+			
 			//creating non blocking server socket channel
 			serverSocketChannel = ServerSocketChannel.open();
-			//serverSocketChannel.configureBlocking(false);
+			serverSocketChannel.configureBlocking(false);
 			
 			//bind the server socket to local machine address and port
 			InetSocketAddress inetAddr = new InetSocketAddress(port);
 			serverSocketChannel.socket().bind(inetAddr);
+			
+			// register the channel with the server selector, indicating it's
+			// interested in accept events
+			serverSocketChannel.register(serverSelector, SelectionKey.OP_ACCEPT);
 			
 			logger.debug("Successfully initialized server socket channel on port " + port);
 			

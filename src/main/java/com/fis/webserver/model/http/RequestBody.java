@@ -95,6 +95,17 @@ public class RequestBody {
 	}
 
 	/**
+	 * Determines if the request body has exceeded maxEntityBodyLength bytes.
+	 * 
+	 * It indicates that the client sent more bytes than stated in the Content-Length header
+	 * 
+	 * @return boolean indicating if entityBodyLength > maxEntityBodyLength
+	 */
+	public boolean getIsError() {
+		return (maxEntityBodyLength > 0 && entityBodyLength > maxEntityBodyLength);
+	}
+	
+	/**
 	 * Called when reading the request body is considered to be finished.
 	 * 
 	 * Prepares the entity body for reading.
@@ -127,10 +138,7 @@ public class RequestBody {
 	 * 
 	 * @param buf Buffer containing new data to append
 	 */
-	public void append(ByteBuffer buf) {
-		//increment the size of the entity body read so far
-		entityBodyLength += buf.limit();
-		
+	public void append(ByteBuffer buf) {		
 		//copy all remainig data to the body part
 		
 		//check if the body is to be cached
@@ -150,8 +158,11 @@ public class RequestBody {
 				
 				//write to file
 				entityBody.flip();
+				
+				//reset the entity body length
+				entityBodyLength = 0;
 				writeToTempFile(entityBody);
-				writeToTempFile(buf);
+				writeToTempFile(buf);		
 				
 				//nullify the buffer so the space will be collected
 				entityBody = null;
@@ -161,10 +172,12 @@ public class RequestBody {
 			}
 			else {
 				entityBody.put(buf);
+				
+				//update the entity body length so far
+				entityBodyLength = entityBody.position();			
 			}
 		}
 		else {
-			//write to temp file
 			writeToTempFile(buf);
 		}
 	}
@@ -197,8 +210,12 @@ public class RequestBody {
 	 * @param buf
 	 */
 	private void writeToTempFile(ByteBuffer buf) {
+		int numWritten = -1;
 		try {
-			entityBodyFileChannel.write(buf);
+			numWritten = entityBodyFileChannel.write(buf);
+			
+			//update the entity body length to match the current size of the data
+			entityBodyLength += numWritten;
 		}
 		catch(Exception e) {
 			logger.error("Could not write request body to temporary file!", e);

@@ -25,7 +25,7 @@ public class HttpResponse {
 	//date format for the date and last-modified information of the response headers
 	public static final DateFormat df = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");  
 	
-	private int statusCode;
+	private HttpResponseCode statusCode;
 	private HashMap<String, String> responseHeaders;
 	
 	//FileChannel of the requested resource
@@ -39,21 +39,21 @@ public class HttpResponse {
 		df.setTimeZone(TimeZone.getTimeZone("GMT"));
 	}
 	
-	public HttpResponse(int statusCode) {
+	public HttpResponse(HttpResponseCode statusCode) {
 		this.statusCode = statusCode;
 		
 		// create the generic headers: Server name, date of the response
 		// generation and connection close(for the moment)
 		responseHeaders = new HashMap<String, String>();
-		responseHeaders.put("Server", SERVER_HEADER_VALUE);
+		responseHeaders.put(HttpHeader.SERVER, SERVER_HEADER_VALUE);
 
-		responseHeaders.put("Date", df.format(new Date()));
-		responseHeaders.put("Connection", "Close");
+		responseHeaders.put(HttpHeader.DATE, df.format(new Date()));
+		responseHeaders.put(HttpHeader.CONNECTION, "Close");
 		
 		contentChannel = null;
 	}
 	
-	public int getStatusCode() {
+	public HttpResponseCode getStatusCode() {
 		return statusCode;
 	}
 
@@ -97,7 +97,7 @@ public class HttpResponse {
 	public ByteBuffer getRawHeader() {
 		StringBuilder rawResponse = new StringBuilder(HTTP_VERSION);
 		rawResponse.append(" ");
-		rawResponse.append(statusCode);
+		rawResponse.append(statusCode.getCode());
 		rawResponse.append("\r\n");
 		
 		for( Map.Entry<String, String> headerEntry : responseHeaders.entrySet() ) {

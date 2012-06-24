@@ -10,9 +10,7 @@ import java.util.HashMap;
  */
 
 public class HttpRequest {	
-	public static final String HTTP_CONTENT_LENGTH_HEADER = "Content-Length";
-	
-	//contains the http method (GET, POST, etc.)
+	//contains the http method
 	private String method;
 	
 	//the URL on which the method must be performed on
@@ -59,7 +57,7 @@ public class HttpRequest {
 		
 		// if the header being read is the content-length, store the value in a
 		// separate variable
-		if( HTTP_CONTENT_LENGTH_HEADER.equalsIgnoreCase(headerName) ) {
+		if( HttpHeader.CONTENT_LENGTH.equalsIgnoreCase(headerName) ) {
 			contentLength = Long.parseLong(headerValue);
 			
 			//update content length of the request body

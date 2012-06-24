@@ -8,8 +8,10 @@ import org.apache.log4j.Logger;
 
 import com.fis.webserver.config.MimeTypes;
 import com.fis.webserver.http.HttpRequestHandler;
+import com.fis.webserver.model.http.HttpHeader;
 import com.fis.webserver.model.http.HttpRequest;
 import com.fis.webserver.model.http.HttpResponse;
+import com.fis.webserver.model.http.HttpResponseCode;
 import com.fis.webserver.util.FileUtils;
 import com.fis.webserver.util.URLTranslator;
 
@@ -34,15 +36,15 @@ public class HttpBaseResponseHandler implements HttpRequestHandler {
 		
 		FileInputStream responseBody = null;
 		
-		int statusCode = 404;
+		HttpResponseCode statusCode = HttpResponseCode.NOT_FOUND;
 		if( requestedFile != null ) {
 
 			//found the resource
-			statusCode = 200;
+			statusCode = HttpResponseCode.OK;
 			
 			//build content headers
-			contentHeaders.put("Content-Type", MimeTypes.getMimeType(FileUtils.getExtension(requestedFile)));
-			contentHeaders.put("Content-Length", String.valueOf(requestedFile.length()));
+			contentHeaders.put(HttpHeader.CONTENT_TYPE, MimeTypes.getMimeType(FileUtils.getExtension(requestedFile)));
+			contentHeaders.put(HttpHeader.CONTENT_LENGTH, String.valueOf(requestedFile.length()));
 			
 			//check if the response can contain a response body
 			if( containsResponseBody() ) {

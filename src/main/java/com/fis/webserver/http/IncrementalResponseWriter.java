@@ -26,7 +26,7 @@ public class IncrementalResponseWriter {
 	private HttpResponse response;
 	
 	//buffer containing the http response header
-	ByteBuffer responseHeader;
+	private ByteBuffer responseHeader;
 	
 	public IncrementalResponseWriter(HttpResponse response) {
 		this.response = response;
@@ -62,10 +62,10 @@ public class IncrementalResponseWriter {
 
 					//read from response file channel directly to destination buffer
 					if( responseResourceChannel != null ) {
-						responseResourceChannel.read(destination);
+						int bytesRead = responseResourceChannel.read(destination);
 						
 						//check if we finished writing the response
-						if(responseResourceChannel.position() >= responseResourceChannel.size() ) {
+						if( bytesRead < 0 ) {
 							processingFinished = true;
 							break;
 						}

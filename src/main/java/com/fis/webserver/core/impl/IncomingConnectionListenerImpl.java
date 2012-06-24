@@ -12,8 +12,10 @@ import com.fis.webserver.pool.WorkerManager;
  * 
  * Extends the abstract Connection listener.
  * 
- * Uses a WorkerManager to distribute incoming connections to a pool of
- * WebWorker threads
+ * Uses a WorkerManager to distribute incoming connections
+ * 
+ * The incoming connection listener is agnosting of the work performed by the
+ * WorkerManager in order to handle the incoming clients
  * 
  * @author Florin Iordache
  * 
@@ -21,7 +23,7 @@ import com.fis.webserver.pool.WorkerManager;
 
 public class IncomingConnectionListenerImpl extends ConnectionListener {
 
-	// worker manager used to distribute new clients to the worker pool
+	// worker manager used to handle the incoming connections
 	private WorkerManager manager;
 	
 	public IncomingConnectionListenerImpl() {

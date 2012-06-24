@@ -8,9 +8,11 @@ import java.util.regex.Pattern;
 
 import org.apache.log4j.Logger;
 
+import com.fis.webserver.config.WebServerConfiguration;
 import com.fis.webserver.http.exceptions.BadRequestException;
 import com.fis.webserver.http.exceptions.EntityTooLargeException;
 import com.fis.webserver.http.exceptions.HeaderTooLargeException;
+import com.fis.webserver.http.exceptions.RequestException;
 import com.fis.webserver.http.exceptions.URITooLongException;
 import com.fis.webserver.model.http.HttpRequest;
 
@@ -39,13 +41,7 @@ import com.fis.webserver.model.http.HttpRequest;
  */
 
 public class HttpRequestParser {
-	
-	//maximum size of a line in the request header (request line or header)
-	public static final int MAX_REQUEST_LINE_SIZE = 8192;
-	
-	//maximum entity body size -> 10MB
-	public static final long MAX_ENTITY_BODY_SIZE = 1020 * 1024 * 10;
-	
+
 	public static final Logger logger = Logger.getLogger(HttpRequestParser.class);
 	
 	//regular expression used to parse the request line
@@ -88,10 +84,14 @@ public class HttpRequestParser {
 	//header decoder
 	private CharsetDecoder decoder;
 	
+	// holds the a RequestException object, if a problem has been encountered
+	// while parsing the request
+	private RequestException reqParserException;
+	
 	public  HttpRequestParser() {
 		
 		//allocating twice the allowed size of a request line
-		buf = ByteBuffer.allocate(2*MAX_REQUEST_LINE_SIZE);
+		buf = ByteBuffer.allocate( 2 * WebServerConfiguration.MAX_REQUEST_LINE_SIZE );
 		buf.clear();
 		
 		httpRequest = new HttpRequest();
@@ -122,9 +122,7 @@ public class HttpRequestParser {
 	 * 			BadRequestException if a problem is detected while reading the request, such 
 	 * 			as a mismatch between the content-length and the actual size of the sent content
 	 */
-	public boolean newData(ByteBuffer newData) throws URITooLongException,
-			EntityTooLargeException, HeaderTooLargeException,
-			BadRequestException {		
+	public boolean newData(ByteBuffer newData)  {		
 		try {
 			//append the data to the internal buffer
 			buf.put(newData);
@@ -133,20 +131,13 @@ public class HttpRequestParser {
 			parseData();
 			buf.compact();
 		}
-		catch(URITooLongException utlEx) {
-			throw utlEx;
-		}
-		catch(EntityTooLargeException etlEx) {
-			throw etlEx;
-		}
-		catch(HeaderTooLargeException htlEx) {
-			throw htlEx;
-		}
-		catch(BadRequestException brEx) {
-			throw brEx;
+		catch(RequestException reqEx) {
+			this.reqParserException = reqEx;
+			logger.trace("RequestException while processing request!", reqEx);
+			finished = true;
 		}
 		catch (Exception e) {
-			logger.error("Could not parse request!", e);
+			logger.error("Unknown error encountered while parsing request!", e);
 			finished = true;
 		}
 		
@@ -154,7 +145,8 @@ public class HttpRequestParser {
 		if (httpRequest.getRequestBody().getIsError()) {
 			logger.trace("Request entity body is larger than the value in the Content-Length header, throwing BadRequestException!");
 			//finish reading, prevent DoS
-			throw new BadRequestException();
+			this.reqParserException = new BadRequestException();
+			finished = true;
 		}
 		else if (httpRequest.getRequestBody().getShouldFinish()) {
 			//finish reading request body
@@ -263,7 +255,7 @@ public class HttpRequestParser {
 					
 					// if the Content-Length header was received, check if it
 					// does not exceed the max allowed entity size
-					if( httpRequest.getContentLength() > MAX_ENTITY_BODY_SIZE ) {
+					if( httpRequest.getContentLength() > WebServerConfiguration.MAX_ENTITY_BODY_SIZE ) {
 						logger.trace("Content-Length too large, throwing EntityTooLargeException!");
 						throw new EntityTooLargeException();
 					}
@@ -287,7 +279,7 @@ public class HttpRequestParser {
 						parsedHeaderValue.append(foldedHeaderMatcher.group(1));
 						
 						//throw HeaderTooLargeException if the header exceeds the maximum size
-						if( parsedHeaderValue.length() > MAX_REQUEST_LINE_SIZE ) {
+						if( parsedHeaderValue.length() > WebServerConfiguration.MAX_REQUEST_LINE_SIZE ) {
 							logger.trace("Header value too large, throwing HeaderTooLargeException!");
 							throw new HeaderTooLargeException();
 						}
@@ -334,8 +326,8 @@ public class HttpRequestParser {
 	 */
 	private void checkForHeaderSizeExceeded(int separatorPos) throws HeaderTooLargeException,
 			URITooLongException {
-		if( (separatorPos == -1 && buf.remaining() > MAX_REQUEST_LINE_SIZE) ||
-				separatorPos > MAX_REQUEST_LINE_SIZE) {
+		if( (separatorPos == -1 && buf.remaining() > WebServerConfiguration.MAX_REQUEST_LINE_SIZE) ||
+				separatorPos > WebServerConfiguration.MAX_REQUEST_LINE_SIZE) {
 			switch( currentState ) {
 			case STATE_HEADERS:
 				logger.trace("Header line exceeds max allowed size, throwing HeaderTooLargeException!");
@@ -369,6 +361,10 @@ public class HttpRequestParser {
 		}
 	}
 
+	public RequestException getException() {
+		return reqParserException;
+	}
+	
 	/**
 	 * TODO Change with a better search algorithm
 	 * search for header line terminator ( CR LF )

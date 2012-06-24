@@ -2,6 +2,8 @@ package com.fis.webserver.http;
 
 import java.util.HashMap;
 
+import com.fis.webserver.http.exceptions.RequestException;
+import com.fis.webserver.http.impl.HttpErrorResponseHandler;
 import com.fis.webserver.http.impl.HttpHeadResponseHandler;
 import com.fis.webserver.http.impl.HttpUnimplementedRequestHandler;
 import com.fis.webserver.http.impl.HttpGetResponseHandler;
@@ -45,5 +47,9 @@ public enum HttpRequestHandlerFinder {
 		}
 		
 		return handler;
+	}
+	
+	public static HttpRequestHandler getErrorHandler(RequestException requestException) {
+		return new HttpErrorResponseHandler(requestException);
 	}
 }

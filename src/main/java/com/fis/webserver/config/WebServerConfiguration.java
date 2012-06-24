@@ -14,6 +14,12 @@ public enum WebServerConfiguration {
 	
 	private Logger logger;
 	
+	//maximum size of a line in the request header (request line or header)
+	public static final int MAX_REQUEST_LINE_SIZE = 8192;
+	
+	//maximum entity body size -> 10MB
+	public static final long MAX_ENTITY_BODY_SIZE = 1020 * 1024 * 10;
+	
 	//file that contains all server's configuration information
 	public static final String WEB_SERVER_CONFIG_FILE = "webserver.properties";
 	

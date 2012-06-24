@@ -14,18 +14,15 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.log4j.Logger;
 
+import com.fis.webserver.config.WebServerConfiguration;
 import com.fis.webserver.core.WebWorker;
 import com.fis.webserver.http.HttpRequestHandler;
 import com.fis.webserver.http.HttpRequestHandlerFinder;
 import com.fis.webserver.http.HttpRequestParser;
 import com.fis.webserver.http.IncrementalResponseWriter;
-import com.fis.webserver.http.exceptions.BadRequestException;
-import com.fis.webserver.http.exceptions.EntityTooLargeException;
-import com.fis.webserver.http.exceptions.HeaderTooLargeException;
-import com.fis.webserver.http.exceptions.URITooLongException;
+import com.fis.webserver.http.exceptions.RequestException;
 import com.fis.webserver.model.http.HttpRequest;
 import com.fis.webserver.model.http.HttpResponse;
-import com.fis.webserver.model.http.HttpResponseCode;
 
 /**
  * WebWorker implementation
@@ -97,7 +94,8 @@ public class HttpWebWorker implements WebWorker {
 		}
 		
 		//prepare the byte buffer
-		dataBuffer = ByteBuffer.allocate(8190);
+		//allocating the max request line byte size
+		dataBuffer = ByteBuffer.allocate(WebServerConfiguration.MAX_REQUEST_LINE_SIZE);
 	}
 	
 	@Override
@@ -208,32 +206,10 @@ public class HttpWebWorker implements WebWorker {
 				pendingReads.put(key, parserWorkState);
 			}
 			
-			//copy the read buffer to the work state to process the new data
-			boolean parsingFinished = false;
+			//copy the read buffer to the work state to process the new data			
+			boolean parsingFinished = parserWorkState.newData(dataBuffer);
 			
-			//prepare for an error response, in case parsing fails
-			HttpResponseCode errorResponseCode = null;
-			
-			try {
-				parsingFinished = parserWorkState.newData(dataBuffer);
-			} catch(EntityTooLargeException etlEx) {
-				errorResponseCode = HttpResponseCode.ENTITY_TOO_LARGE;
-			} catch (URITooLongException utlEx) {
-				errorResponseCode = HttpResponseCode.REQUEST_URI_TOO_LONG;
-			} catch (HeaderTooLargeException htlEx) {
-				errorResponseCode = HttpResponseCode.REQUEST_HEADER_TOO_LARGE;
-			} catch (BadRequestException brEx) {
-				errorResponseCode = HttpResponseCode.BAD_REQUEST;
-			}
-			
-			//check if we have an error
-			if( errorResponseCode != null) {
-				HttpResponse errorResponse = new HttpResponse(errorResponseCode);
-				
-				//queue the response
-				queueResponse(key, errorResponse);
-			}
-			else if( parsingFinished ) {
+			if( parsingFinished ) {
 				//parsing is finished, must respond to the request
 				HttpRequest request = parserWorkState.getHttpRequest();
 				
@@ -241,7 +217,7 @@ public class HttpWebWorker implements WebWorker {
 				pendingReads.remove(key);
 				
 				//respond to this request
-				respond(key, request);
+				respond(key, request, parserWorkState.getException());
 			}
 		}
 	}
@@ -285,21 +261,39 @@ public class HttpWebWorker implements WebWorker {
 		
 		return bytesRead;
 	}
-	
+
 	/**
 	 * 
-	 * Prepares the http response after the request was successfully parsed
+	 * Prepares the http response
 	 * 
-	 *  @param key SelectionKey indicating the incoming connection
-	 *  @param request HttpRequest object
+	 * Method will try to find a handler, based on the request method, if the
+	 * request was successfully parsed, or based on the exception received as a
+	 * parameter, if parsing has failed
+	 * 
+	 * @param key
+	 *            SelectionKey indicating the incoming connection
+	 * @param request
+	 *            HttpRequest object
+	 * @param exception
+	 *            RequestException object, resulted from the parsing operation
 	 * 
 	 */
-	private void respond(SelectionKey key, HttpRequest request) {
+	private void respond(SelectionKey key, HttpRequest request, RequestException exception) {
 		
-		//build the response
-		//get a handler capable to solve the request
-		HttpRequestHandler handler = HttpRequestHandlerFinder.lookupRequestHandler(request.getMethod());
+		HttpRequestHandler handler = null;
 		
+		//get an apropriate handler
+		if( exception != null ) {
+			//there was an error parsing the request
+			//get the error handler
+			handler = HttpRequestHandlerFinder.getErrorHandler(exception);
+		}
+		else {
+			//get a handler capable to solve the request
+			handler = HttpRequestHandlerFinder.lookupRequestHandler(request.getMethod());			
+		}
+
+		//build the response		
 		//delegate the handling of the request to the handler
 		HttpResponse response = handler.handle(request);
 		

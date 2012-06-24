@@ -7,6 +7,6 @@ package com.fis.webserver.http.exceptions;
  * 
  */
 
-public class BadRequestException extends Exception {
+public class BadRequestException extends RequestException {
 	private static final long serialVersionUID = -1705699521278140743L;
 }

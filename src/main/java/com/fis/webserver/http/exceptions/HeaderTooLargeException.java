@@ -6,6 +6,6 @@ package com.fis.webserver.http.exceptions;
  *
  */
 
-public class HeaderTooLargeException extends Exception {
+public class HeaderTooLargeException extends RequestException {
 	private static final long serialVersionUID = 5382489536724630210L;
 }

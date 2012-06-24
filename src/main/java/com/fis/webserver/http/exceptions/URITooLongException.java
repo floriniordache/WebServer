@@ -7,6 +7,6 @@ package com.fis.webserver.http.exceptions;
  *
  */
 
-public class URITooLongException extends Exception {
+public class URITooLongException extends RequestException {
 	private static final long serialVersionUID = 1695572455643416857L;
 }

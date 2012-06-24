@@ -129,7 +129,9 @@ public class RequestBody {
 		}
 		else {
 			//flip the entity body byte buffer to prepare for reading
-			entityBody.flip();
+			if( entityBody != null ) {
+				entityBody.flip();
+			}
 		}
 	}
 	
@@ -146,7 +148,8 @@ public class RequestBody {
 			
 			//we need to cache it, create the buffer
 			if( entityBody == null ) {
-				entityBody = ByteBuffer.allocate(16380);
+				//twice the allowed size of a request line
+				entityBody = ByteBuffer.allocate( 2 * WebServerConfiguration.MAX_REQUEST_LINE_SIZE );
 			}
 		
 			//check if we have enough space remaining in buffer

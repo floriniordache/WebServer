@@ -18,7 +18,47 @@
 				<target>1.6</target>
 			</configuration>
   		</plugin>
+		<plugin>
+			<groupId>org.apache.maven.plugins</groupId>
+			<artifactId>maven-assembly-plugin</artifactId>
+			<version>2.1</version>
+			<configuration>
+				<archive>
+					<manifest>
+						<mainClass>com.fis.webserver.FISServer</mainClass>
+					</manifest>
+				</archive>
+				<descriptorRefs>
+					<descriptorRef>jar-with-dependencies</descriptorRef>
+				</descriptorRefs>
+				<dependencySets>
+					<dependencySet>
+						<useProjectArtifact>false</useProjectArtifact>
+					</dependencySet>
+				</dependencySets>
+			</configuration>
+			<executions>
+				<execution>
+					<id>make-assembly</id>
+					<phase>package</phase>
+					<goals>
+						<goal>single</goal>
+					</goals>
+				</execution>
+			</executions>
+		</plugin>
   	</plugins>
+  	<!-- resources>
+  		<resource>
+  			<directory>src/main/resources</directory>
+  			<includes>
+ 				<include>*</include>
+  			</includes>
+  			<excludes>
+  				<exclude>webserver.properties</exclude>
+  			</excludes>
+  		</resource>
+  	</resources-->
   </build>
   <dependencies>
   	<dependency>

@@ -1,11 +1,7 @@
 package com.fis.webserver.http.impl;
 
 import com.fis.webserver.http.HttpRequestHandler;
-import com.fis.webserver.http.exceptions.BadRequestException;
-import com.fis.webserver.http.exceptions.EntityTooLargeException;
-import com.fis.webserver.http.exceptions.HeaderTooLargeException;
 import com.fis.webserver.http.exceptions.RequestException;
-import com.fis.webserver.http.exceptions.URITooLongException;
 import com.fis.webserver.model.http.HttpRequest;
 import com.fis.webserver.model.http.HttpResponse;
 import com.fis.webserver.model.http.HttpResponseCode;
@@ -32,19 +28,25 @@ public class HttpErrorResponseHandler implements HttpRequestHandler {
 	public HttpResponse handle(HttpRequest request) {
 		HttpResponseCode responseCode = HttpResponseCode.INTERNAL_SERVER_ERROR;
 		
-		if( requestException instanceof URITooLongException ) {
-			responseCode = HttpResponseCode.REQUEST_URI_TOO_LONG;
-		}
-		else if (requestException instanceof HeaderTooLargeException) {
-			responseCode = HttpResponseCode.REQUEST_HEADER_TOO_LARGE;
-		}
-		else if (requestException instanceof EntityTooLargeException) {
-			responseCode = HttpResponseCode.ENTITY_TOO_LARGE;
-		}
-		else if(requestException instanceof BadRequestException) {
+		//map the error that occurred to the corresponding response
+		switch( requestException.getErrorCause() ) {
+		case RequestException.BAD_REQUEST:
 			responseCode = HttpResponseCode.BAD_REQUEST;
+			break;
+		case RequestException.ENTITY_TOO_LARGE:
+			responseCode = HttpResponseCode.ENTITY_TOO_LARGE;
+			break;
+		case RequestException.HEADER_TOO_LARGE:
+			responseCode = HttpResponseCode.REQUEST_HEADER_TOO_LARGE;
+			break;
+		case RequestException.URI_TOO_LONG:
+			responseCode = HttpResponseCode.REQUEST_URI_TOO_LONG;
+			break;
+		default:
+			responseCode = HttpResponseCode.INTERNAL_SERVER_ERROR;
 		}
 		
+		//build and return the response object
 		HttpResponse response = new HttpResponse(responseCode);
 		
 		return response;

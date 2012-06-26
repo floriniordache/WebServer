@@ -13,13 +13,27 @@ import com.fis.webserver.core.impl.HttpWebWorker;
 /**
  * WebWorker thread pool manager
  * 
- * It dispatches the incoming connections to one of the WebWorker objects in the
- * internal pool, using a Round Robin balancing algorithm
+ * The pool size is based on the webserver.properties configuration information.
+ * Minimum number of workers will be determined via
+ * WebServerConfiguration.INSTANCE.getMinWorkers() If at some point more
+ * requests hit the webserver, and all the workers are full, a new worker will
+ * be spawned, as long as the pool size does not exceed
+ * WebServerConfiguration.INSTANCE.getMaxWorkers(). Periodic attempts are made
+ * to compact the worker pool. Workers are discarded from pool if they are not
+ * handling any clients, and there are at least
+ * WebServerConfiguration.INSTANCE.getMinWorkers() workers available in the pool
  * 
- * The linked list is used as a queue: when dispatching an incoming connection
- * to one of the workers, the workers will be extracted from the beginning of
- * the list, and re-added at the end. If the pool is exhausted, the worker will try to
- * spawn a new worker thread that will handle the new connection
+ * It uses an internal PriorityQueue to store the available WebWorkers. The
+ * WebWorkers are sorted by the number of free client slots in descending order.
+ * 
+ * When polling the queue, the returned WebWorker is automatically one that has
+ * the highest number of client slots free (meaning the worker with the lowest
+ * load). After handing the new client to the worker, the workers are re-added
+ * to the queue, to be kept in sorted order.
+ * 
+ * Also, after each operation of handing new connection to the workers, an
+ * attempt is made to compact the pool to the minimum number of workers stated
+ * in the config file
  * 
  * @author Florin Iordache
  * 
@@ -28,6 +42,7 @@ import com.fis.webserver.core.impl.HttpWebWorker;
 public class WorkerManager {
 	public static final Logger logger = Logger.getLogger(WorkerManager.class);
 	
+	//main pool of web workers
 	private PriorityQueue<WebWorker> workerPool;
 	
 	public WorkerManager() {
@@ -92,6 +107,9 @@ public class WorkerManager {
 				}
 			}
 		}
+		
+		//try to compact pool
+		compactPool();
 	}
 	
 	/**
@@ -136,5 +154,38 @@ public class WorkerManager {
 		workerPool.add(worker);
 		
 		return worker;
+	}
+	
+	
+	/**
+	 * 
+	 * Attempts to compact pool by discarding the unused workers
+	 * 
+	 */
+	private void compactPool() {
+		logger.info("Compacting WebWorker pool...");
+		
+		WebWorker handlingWorker = null;
+		while((workerPool.size() > WebServerConfiguration.INSTANCE.getMinWorkers()) && ((handlingWorker = workerPool.poll()) != null)) {
+			//search for idle workers
+			int workerFreeSlots = handlingWorker.getFreeSlots();
+			
+			if( workerFreeSlots < WebServerConfiguration.INSTANCE.getClientsPerWorker() ) {
+				//this is a priority queue ordered descending by the number of free slots
+				//if we reached a worker with a lower number of client slots, we should terminate processing, we can't discard any workers
+				logger.trace("No more workers to discard!");
+				workerPool.add(handlingWorker);
+				break;
+			}
+			else {
+				logger.trace("Found idle WebWorker, shutting down and discarding from pool!");
+				
+				//this is an idle worker
+				handlingWorker.shutDown();
+				
+				//don't add back to pool
+			}
+		}
+		
 	}
 }

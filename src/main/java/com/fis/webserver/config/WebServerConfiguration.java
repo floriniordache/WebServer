@@ -67,6 +67,9 @@ public enum WebServerConfiguration {
 				|| clientsPerWorker == null || docRoot == null || tempFolder == null) {
 			logger.error("Error loading " + WEB_SERVER_CONFIG_FILE + "!");
 			
+			//configuration invalid, or configuration not found, terminate the JVM
+			System.exit(-1);
+			
 			//mark the config as being incomplete
 			configOk = false;
 		}

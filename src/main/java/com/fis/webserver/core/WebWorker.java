@@ -43,4 +43,10 @@ public interface WebWorker extends Runnable, Comparable<WebWorker> {
 	 * @return integer representing the number of extra clients this worker can handle
 	 */
 	public int getFreeSlots();
+	
+	/**
+	 * Signals the worker to terminate processing and shut down
+	 * 
+	 */
+	public void shutDown();
 }

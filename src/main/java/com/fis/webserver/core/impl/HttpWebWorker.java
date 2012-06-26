@@ -76,6 +76,9 @@ public class HttpWebWorker implements WebWorker {
 	//buffer used to read and write data
 	private ByteBuffer dataBuffer;
 	
+	//flag indicating that this worker should shut down
+	private boolean shutDown;
+	
 	public HttpWebWorker(int maxClients ) {
 		this.freeClientSlots = maxClients;
 		
@@ -96,6 +99,8 @@ public class HttpWebWorker implements WebWorker {
 		//prepare the byte buffer
 		//allocating the max request line byte size
 		dataBuffer = ByteBuffer.allocate(WebServerConfiguration.MAX_REQUEST_LINE_SIZE);
+		
+		shutDown = false;
 	}
 	
 	@Override
@@ -108,6 +113,13 @@ public class HttpWebWorker implements WebWorker {
 				
 				//wait for at least one incoming connection
 				socketSelector.select();
+				
+				//check for the shutdown flag
+				if(shutDown) {
+					//terminate the worker
+					logger.trace("Terminating WebWorker!");
+					break;
+				}
 				
 				//check for pending incoming clients
 				SocketChannel newChannel = null;
@@ -431,5 +443,15 @@ public class HttpWebWorker implements WebWorker {
 		}
 		
 		return 0;
+	}
+
+	@Override
+	public void shutDown() {
+		//set the shutdown flag to true
+		shutDown = true;
+		
+		//wake the selector
+		socketSelector.wakeup();
+		
 	}
 }

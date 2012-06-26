@@ -9,7 +9,7 @@ import com.fis.webserver.model.http.HttpResponseCode;
 /**
  * Handler for a erroneous http requests
  * 
- * Based on the exception received as a parameter will build an apropriate
+ * Based on the exception received as a parameter will build an appropriate
  * response for the client
  * 
  * @author Florin Iordache
@@ -48,6 +48,9 @@ public class HttpErrorResponseHandler implements HttpRequestHandler {
 		
 		//build and return the response object
 		HttpResponse response = new HttpResponse(responseCode);
+		
+		//make sure we clean the resources used on the server
+		response.setCleaner(request.getRequestBody().getCleaner());
 		
 		return response;
 	}
